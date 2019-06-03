@@ -314,6 +314,8 @@ class TestCaseWriter {
             handleExpectationSpecificLines(call, lines, res, name)
             handleExpectations(res, lines, true, name)
         }
+        //TODO: BMR expectations from partial oracles here?
+
 
 
     }
@@ -444,11 +446,9 @@ class TestCaseWriter {
         }
         else{
             when(resContentsItem::class) {
-                //Double::class -> return "NumberMatcher.numberMatches(${resContentsItem as Double})"
                 Double::class -> return "NumberMatcher.numbersMatch(" +
                         "json_$name.getJsonObject(\"$ident\"), " +
                         "${resContentsItem as Double})"
-                //String::class -> return "containsString(\"${(resContentsItem as String).replace("\"", "\\\"").replace("\n", "\\n")}\")"
                 String::class -> return "json_$name.getJsonObject(\"$ident\").toString()" +
                         ".matches(\"${(resContentsItem as String).replace("\"", "\\\"").replace("\n", "\\n")}\")"
 
@@ -461,8 +461,7 @@ class TestCaseWriter {
         - Gson does parses all numbers as Double
         - Hamcrest has a hard time comparing double to int
         This is (admittedly) a horrible hack, but it should address the issue until a more elegant solution can be found.
-        Note: it also results in an odd behaviour in the generated test: IntelliJ will complain, but the test is executable.
-        * */
+        */
     }
 
     private fun handleFieldValuesAssert(resContentsItem: Any?): String{
@@ -482,8 +481,7 @@ class TestCaseWriter {
         - Gson does parses all numbers as Double
         - Hamcrest has a hard time comparing double to int
         This is (admittedly) a horrible hack, but it should address the issue until a more elegant solution can be found.
-        Note: it also results in an odd behaviour in the generated test: IntelliJ will complain, but the test is executable.
-        * */
+        */
     }
 
     private fun handleResponseContents(lines: Lines, res: RestCallResult) {
@@ -494,14 +492,6 @@ class TestCaseWriter {
                 else lines.add(".contentType(\"${res.getBodyType()
                         .toString().split(";").first() //TODO this is somewhat unpleasant. A more elegant solution is needed.
                 }\")")
-
-                /*if(res.getBodyType()!= null && res.getStatusCode()!=500){
-                    lines.add(".contentType(\"${res.getBodyType()}\")")
-                }
-
-                if(res.getStatusCode() == 500){
-                    val justACheck = res.getBodyType()
-                }*/
 
                 val bodyString = res.getBody()
 
@@ -525,7 +515,7 @@ class TestCaseWriter {
                                     val actualValue = resContents[it]
                                     if (actualValue != null) {
                                         val printableTh = handleFieldValuesAssert(actualValue)
-                                        if (printableTh != "null" && printableTh != "NotCoveredYet") {
+                                        if (printableTh != "nullValue()" && printableTh != "NotCoveredYet") {
                                             lines.add(".body(\"\'${it}\'\", ${printableTh})")
                                         }
                                     }
@@ -649,20 +639,6 @@ class TestCaseWriter {
         As it is still work in progress, expect quite significant changes to this.
         */
 
-        /*lines.add("expectationHandler()")
-        lines.indented {
-            lines.add(".expect()")
-            //lines.add(".that(activeExpectations, true)")
-            //lines.add(".that(activeExpectations, false)")
-            if(configuration.enableCompleteObjects == false){
-                addExpectationsWithoutObjects(result, lines, name)
-            }
-            lines.append(when {
-                format.isJava() -> ";"
-                else -> ""
-            })
-        }*/
-
         //Insert basic expectations
         lines.add("expectationHandler.expect()") // this is a bit idle. Perhaps find a nicer way.
         lines.indented {
@@ -684,14 +660,22 @@ class TestCaseWriter {
                         '[' -> {
                             // This would be run if the JSON contains an array of objects
                             val resContents = Gson().fromJson(result.getBody(), ArrayList::class.java)
+                            val printableTh = "NumberMatcher.numbersMatch(" +
+                                    "json_$name.getJsonObject(\"size\"), " +
+                                    "${resContents.size})"
+                            lines.add(".that(expectationsMasterSwitch, ($printableTh))")
                         }
                         '{' -> {
                             // This would be run if the JSON contains a single object
-                            val resContents = Gson().fromJson(result.getBody(), Object::class.java)
+                            val resContents = Gson().fromJson(result.getBody(), LinkedTreeMap::class.java)
 
-                            (resContents as LinkedTreeMap<*, *>).keys.forEach {
+                            resContents.keys.filter{!(it as String).contains("timestamp")}
+                                    .forEach {
                                 val printableTh = handleFieldValues(resContents[it], it.toString(), name)
-                                if(printableTh != "null" && printableTh != "NotCoveredYet"){
+                                if(printableTh != "nullValue()"
+                                        && printableTh != "NotCoveredYet"
+                                        && !printableTh.contains("logged")
+                                ){
                                     //lines.add(".that(expectationsMasterSwitch, (\"${it}\" == \"${resContents[it]}\"))")
                                     lines.add(".that(expectationsMasterSwitch, ($printableTh))")
                                 }
@@ -704,6 +688,12 @@ class TestCaseWriter {
                 }
             }
         }
+    }
+
+    private fun addPartialOraclePoC(result: RestCallResult, lines: Lines, name: String){
+        // First add any extra calls that are needed (e.g. GETs)
+
+        // Then conduct any comparisons that are needed
     }
 
     private fun addMetaDataComments(test: TestCase, lines: Lines){

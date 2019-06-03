@@ -46,7 +46,7 @@ public class ExpectationHandler implements AggregateExpectation, IndividualExpec
     @Override
     public IndividualExpectation that(boolean active, boolean condition){
         if(!active || !masterSwitch) return this;
-        if (!condition) throw new IllegalArgumentException("Failed Expectation Exception");
+        if (!condition) { throw new AssertionError("Failed Expectation Exception"); }
         return this;
     }
 
@@ -60,6 +60,7 @@ public class ExpectationHandler implements AggregateExpectation, IndividualExpec
             }
             catch (Exception e1){
                 //TODO: handle this somehow?
+                e1.printStackTrace();
             }
         }
         return this;
