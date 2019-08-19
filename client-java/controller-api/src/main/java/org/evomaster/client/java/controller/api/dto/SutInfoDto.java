@@ -13,6 +13,11 @@ public class SutInfoDto {
      * on how to interact with it
      */
     public RestProblemDto restProblem;
+
+    /**
+     * If the SUT is a GraphQL API, here there will be the info
+     * on how to interact with it
+     */
     public GraphqlProblemDto graphqlProblem;
 
     /**

@@ -212,13 +212,13 @@ class Main {
 
             val key = when (config.algorithm) {
                 EMConfig.Algorithm.MIO -> Key.get(
-                        object : TypeLiteral<MioAlgorithm<GraphqlIndividual>>() {})
+                        object : TypeLiteral<MioAlgorithm<RestIndividual>>() {})
                 EMConfig.Algorithm.RANDOM -> Key.get(
-                        object : TypeLiteral<RandomAlgorithm<GraphqlIndividual>>() {})
+                        object : TypeLiteral<RandomAlgorithm<RestIndividual>>() {})
                 EMConfig.Algorithm.WTS -> Key.get(
-                        object : TypeLiteral<WtsAlgorithm<GraphqlIndividual>>() {})
+                        object : TypeLiteral<WtsAlgorithm<RestIndividual>>() {})
                 EMConfig.Algorithm.MOSA -> Key.get(
-                        object : TypeLiteral<MosaAlgorithm<GraphqlIndividual>>() {})
+                        object : TypeLiteral<MosaAlgorithm<RestIndividual>>() {})
                 else -> throw IllegalStateException("Unrecognized algorithm ${config.algorithm}")
             }
 

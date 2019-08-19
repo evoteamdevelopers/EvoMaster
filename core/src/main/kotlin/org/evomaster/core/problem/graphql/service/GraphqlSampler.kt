@@ -17,7 +17,6 @@ import org.evomaster.client.java.controller.api.dto.SutInfoDto
 import org.evomaster.core.EMConfig
 import org.evomaster.core.problem.graphql.GraphqlAction
 import org.evomaster.core.problem.graphql.GraphqlIndividual
-import org.evomaster.core.problem.rest.service.RestSampler
 import org.evomaster.core.remote.SutProblemException
 import org.evomaster.core.remote.service.RemoteController
 import org.evomaster.core.search.gene.ObjectGene
@@ -33,7 +32,7 @@ import javax.ws.rs.core.Response
 class GraphqlSampler : Sampler<GraphqlIndividual>() {
 
     companion object {
-        private val log: Logger = LoggerFactory.getLogger(RestSampler::class.java)
+        private val log: Logger = LoggerFactory.getLogger(GraphqlSampler::class.java)
     }
 
     @Inject

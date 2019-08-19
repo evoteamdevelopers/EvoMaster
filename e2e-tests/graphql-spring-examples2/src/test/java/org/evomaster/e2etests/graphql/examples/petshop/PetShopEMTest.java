@@ -17,8 +17,8 @@ public class PetShopEMTest extends PetShopTestBase {
 
     private void testRunEM(EMConfig.Algorithm alg, int iterations) throws Throwable {
 
-        String outputFolderName = "PIEM_" + alg.toString();
-        ClassName className = new ClassName("org.PIEM_Run_" + alg.toString());
+        String outputFolderName = "GraphQL_PetShop_" + alg.toString();
+        ClassName className = new ClassName("org.GraphQL_PetShop_Run_" + alg.toString());
         clearGeneratedFiles(outputFolderName, className);
 
         handleFlaky(() -> {

@@ -3,7 +3,7 @@ package org.evomaster.client.java.controller.problem;
 
 public class GraphqlProblem implements ProblemInfo{
 
-    public String graphqlEndpointUrl;
+    private final String graphqlEndpointUrl;
 
     public GraphqlProblem(String graphqlEndpointUrl) {
         /*

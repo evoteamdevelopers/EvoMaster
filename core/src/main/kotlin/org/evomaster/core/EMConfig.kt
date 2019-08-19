@@ -324,12 +324,12 @@ class EMConfig {
 
     enum class ProblemType {
         REST,
-        GRAPHQL,
+        @Experimental GRAPHQL,
         @Experimental WEB
     }
 
     @Cfg("The type of SUT we want to generate tests for, e.g., a RESTful API")
-    var problemType = ProblemType.GRAPHQL
+    var problemType = ProblemType.REST
 
 
     @Cfg("Specify in which format the tests should be outputted")
