@@ -79,7 +79,7 @@ class GraphqlSampler : Sampler<GraphqlIndividual>() {
 
         val query = IntrospectionQuery.INTROSPECTION_QUERY
         val encodedQuery = URLEncoder.encode(query, "utf-8")
-        val response = connectToEndpoint(graphqlEndpointUrl, 30, encodedQuery)
+        val response = connectToEndpoint(graphqlEndpointUrl, encodedQuery)
 
         if (!response.statusInfo.family.equals(Response.Status.Family.SUCCESSFUL)) {
             throw SutProblemException("Cannot get graphql schema info from $graphqlEndpointUrl , status=${response.status}")
@@ -107,24 +107,15 @@ class GraphqlSampler : Sampler<GraphqlIndividual>() {
 
     }
 
-    private fun connectToEndpoint(endPointUrl: String, attempts: Int, query: String): Response {
+    private fun connectToEndpoint(endPointUrl: String, query: String): Response {
 
-        for (i in 0 until attempts) {
             try {
                 return ClientBuilder.newClient()
                         .target(endPointUrl + "?query=" + query)
                         .request(MediaType.APPLICATION_JSON_TYPE)
                         .get()
             } catch (e: Exception) {
-
-                if (e.cause is ConnectException) {
-                    Thread.sleep(1_000)
-                } else {
-                    throw IllegalStateException("Failed to connect to $endPointUrl: ${e.message}")
-                }
+                throw IllegalStateException("Failed to connect to $endPointUrl: ${e.message}")
             }
-        }
-
-        throw IllegalStateException("Failed to connect to $endPointUrl")
     }
 }
