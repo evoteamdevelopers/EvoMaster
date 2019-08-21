@@ -1,9 +1,7 @@
 package com.foo.graphql.examples.spring.petshop.entities;
 
-import lombok.Data;
 import com.foo.graphql.examples.spring.petshop.enums.Animal;
 
-@Data
 public class Pet {
     private long id;
 
