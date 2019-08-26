@@ -25,8 +25,9 @@ public class PetShopEMTest extends PetShopTestBase {
             List<String> args = getArgsWithCompilation(iterations, outputFolderName, className);
             args.add("--algorithm");
             args.add(alg.toString());
+//            args.add("--problemType GRAPHQL");
 
-            Solution<GraphqlIndividual> solution = initAndRun(args);
+            Solution<GraphqlIndividual> solution = (initAndRun(args));
 
             assertTrue(solution.getIndividuals().size() >= 1);
 

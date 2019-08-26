@@ -19,6 +19,7 @@ import org.evomaster.core.problem.web.service.WebModule
 import org.evomaster.core.remote.NoRemoteConnectionException
 import org.evomaster.core.remote.SutProblemException
 import org.evomaster.core.remote.service.RemoteController
+import org.evomaster.core.search.Individual
 import org.evomaster.core.search.Solution
 import org.evomaster.core.search.algorithms.MioAlgorithm
 import org.evomaster.core.search.algorithms.MosaAlgorithm
@@ -209,20 +210,52 @@ class Main {
 
             val config = injector.getInstance(EMConfig::class.java)
 
-
             val key = when (config.algorithm) {
-                EMConfig.Algorithm.MIO -> Key.get(
-                        object : TypeLiteral<MioAlgorithm<RestIndividual>>() {})
-                EMConfig.Algorithm.RANDOM -> Key.get(
-                        object : TypeLiteral<RandomAlgorithm<RestIndividual>>() {})
-                EMConfig.Algorithm.WTS -> Key.get(
-                        object : TypeLiteral<WtsAlgorithm<RestIndividual>>() {})
-                EMConfig.Algorithm.MOSA -> Key.get(
-                        object : TypeLiteral<MosaAlgorithm<RestIndividual>>() {})
+                EMConfig.Algorithm.MIO ->
+                {
+                    if(config.problemType ==EMConfig.ProblemType.REST)
+                        Key.get(
+                                object  : TypeLiteral<MioAlgorithm<RestIndividual>>() {})
+                    else if(config.problemType ==EMConfig.ProblemType.GRAPHQL)
+                        Key.get(
+                                object : TypeLiteral<MioAlgorithm<GraphqlIndividual>>() {})
+                    else throw IllegalStateException("Unrecognized problem type ${config.problemType}")
+                }
+                EMConfig.Algorithm.RANDOM ->
+                {
+                    if(config.problemType ==EMConfig.ProblemType.REST)
+                        Key.get(
+                                object  : TypeLiteral<RandomAlgorithm<RestIndividual>>() {})
+                    else if(config.problemType ==EMConfig.ProblemType.GRAPHQL)
+                        Key.get(
+                                object : TypeLiteral<RandomAlgorithm<GraphqlIndividual>>() {})
+                    else throw IllegalStateException("Unrecognized problem type ${config.problemType}")
+                }
+                EMConfig.Algorithm.WTS ->
+                {
+                    if(config.problemType ==EMConfig.ProblemType.REST)
+                        Key.get(
+                                object  : TypeLiteral<WtsAlgorithm<RestIndividual>>() {})
+                    else if(config.problemType ==EMConfig.ProblemType.GRAPHQL)
+                        Key.get(
+                                object : TypeLiteral<WtsAlgorithm<GraphqlIndividual>>() {})
+                    else throw IllegalStateException("Unrecognized problem type ${config.problemType}")
+                }
+                EMConfig.Algorithm.MOSA ->
+                {
+                    if(config.problemType ==EMConfig.ProblemType.REST)
+                        Key.get(
+                                object  : TypeLiteral<MosaAlgorithm<RestIndividual>>() {})
+                    else if(config.problemType ==EMConfig.ProblemType.GRAPHQL)
+                        Key.get(
+                                object : TypeLiteral<MosaAlgorithm<GraphqlIndividual>>() {})
+                    else throw IllegalStateException("Unrecognized problem type ${config.problemType}")
+                }
                 else -> throw IllegalStateException("Unrecognized algorithm ${config.algorithm}")
             }
 
             val imp = injector.getInstance(key)
+
 
             LoggingUtil.getInfoLogger().info("Starting to generate test cases")
             val solution = imp.search()

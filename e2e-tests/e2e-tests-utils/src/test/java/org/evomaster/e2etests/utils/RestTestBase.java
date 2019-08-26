@@ -9,6 +9,7 @@ import org.evomaster.client.java.instrumentation.ClassName;
 import org.evomaster.core.Main;
 import org.evomaster.core.output.OutputFormat;
 import org.evomaster.core.output.compiler.CompilerForTestGenerated;
+import org.evomaster.core.problem.graphql.GraphqlIndividual;
 import org.evomaster.core.problem.rest.*;
 import org.evomaster.core.remote.service.RemoteController;
 import org.evomaster.core.search.Action;
@@ -21,7 +22,6 @@ import org.junit.platform.launcher.listeners.TestExecutionSummary;
 
 import java.io.File;
 import java.time.Duration;
-import java.time.temporal.TemporalUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,7 +29,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public abstract class RestTestBase {
+public abstract class RestTestBase extends TestBase{
 
     protected static InstrumentedSutStarter embeddedStarter;
     protected static String baseUrlOfSut;
