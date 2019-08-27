@@ -85,6 +85,14 @@
             <artifactId>junit-platform-surefire-provider</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.fasterxml.jackson.module</groupId>
+            <artifactId>jackson-module-kotlin</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+
+
     </dependencies>
 
 </project>
