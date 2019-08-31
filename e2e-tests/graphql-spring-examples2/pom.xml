@@ -12,7 +12,7 @@
 
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>evomaster-e2e-tests-graphql-spring-examples</artifactId>
+    <artifactId>evomaster-e2e-tests-graphql-spring-examples2</artifactId>
 
 
     <dependencies>

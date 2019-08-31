@@ -142,7 +142,19 @@ public abstract class TestBase {
         );
     }
 
-    protected abstract List<String> getArgsWithCompilation(int iterations, String outputFolderName, ClassName testClassName);
+    protected List<String> getArgsWithCompilation(int iterations, String outputFolderName, ClassName testClassName){
+
+        return new ArrayList<>(Arrays.asList(
+                "--createTests", "true",
+                "--seed", "42",
+                "--sutControllerPort", "" + controllerPort,
+                "--maxActionEvaluations", "" + iterations,
+                "--stoppingCriterion", "FITNESS_EVALUATIONS",
+                "--outputFolder", outputFolderPath(outputFolderName),
+                "--outputFormat", OutputFormat.KOTLIN_JUNIT_5.toString(),
+                "--testSuiteFileName", testClassName.getFullNameWithDots()
+        ));
+    }
 
 
 
