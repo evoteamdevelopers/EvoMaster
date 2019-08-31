@@ -12,7 +12,7 @@
 
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>evomaster-e2e-tests-graphql-spring-examples2</artifactId>
+    <artifactId>evomaster-e2e-tests-graphql-spring-examples</artifactId>
 
 
     <dependencies>
@@ -37,12 +37,6 @@
             <groupId>org.evomaster</groupId>
             <artifactId>evomaster-core</artifactId>
             <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.graphql-java</groupId>
-                    <artifactId>graphql-java</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.evomaster</groupId>
