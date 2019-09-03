@@ -111,6 +111,7 @@
         <jackson.version>2.9.7</jackson.version>
         <asm.version>7.0</asm.version>
         <testcontainers.version>1.10.1</testcontainers.version>
+        <graphql.spring.version>5.0.2</graphql.spring.version>
     </properties>
 
 
@@ -549,13 +550,13 @@
             <dependency>
                 <groupId>com.graphql-java</groupId>
                 <artifactId>graphql-spring-boot-starter</artifactId>
-                <version>5.0.2</version>
+                <version>${graphql.spring.version}</version>
             </dependency>
 
             <dependency>
                 <groupId>com.graphql-java</groupId>
                 <artifactId>graphiql-spring-boot-starter</artifactId>
-                <version>5.0.2</version>
+                <version>${graphql.spring.version}</version>
             </dependency>
 
 

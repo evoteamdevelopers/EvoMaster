@@ -48,7 +48,7 @@ class GraphqlSampler : Sampler<GraphqlIndividual>() {
     @PostConstruct
     private fun initialize() {
 
-        GraphqlSampler.log.debug("Initializing {}", GraphqlSampler::class.simpleName)
+        log.debug("Initializing {}", GraphqlSampler::class.simpleName)
 
         rc.checkConnection()
 
