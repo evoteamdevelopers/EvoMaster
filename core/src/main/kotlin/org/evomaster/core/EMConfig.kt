@@ -324,6 +324,7 @@ class EMConfig {
 
     enum class ProblemType {
         REST,
+        @Experimental GRAPHQL,
         @Experimental WEB
     }
 

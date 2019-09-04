@@ -129,6 +129,11 @@
             <artifactId>evomaster-dbconstraint</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.graphql-java</groupId>
+            <artifactId>graphql-java</artifactId>
+        </dependency>
+
 
     </dependencies>
 

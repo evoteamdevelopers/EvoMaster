@@ -6,7 +6,7 @@ import org.evomaster.core.search.ActionResult
 import javax.ws.rs.core.MediaType
 
 
-class RestCallResult : ActionResult {
+open class RestCallResult : ActionResult {
 
     constructor(stopping: Boolean = false) : super(stopping)
     private constructor(other: ActionResult) : super(other)
