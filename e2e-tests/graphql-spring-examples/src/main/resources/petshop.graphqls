@@ -1,10 +1,13 @@
 type Query {
     pets: [Pet]
+    petsById(id: ID!): Pet
 }
-
+type Mutation {
+    CreatePet(id: Int!,type: Animal!,name: String!,age: Int): Pet
+}
 type Pet {
-    id: Int!
-    type: Animal!
+    id: Int
+    type: Animal
     name: String
     age: Int
 }
