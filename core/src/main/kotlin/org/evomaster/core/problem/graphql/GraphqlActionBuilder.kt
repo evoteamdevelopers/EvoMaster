@@ -25,9 +25,8 @@ class GraphqlActionBuilder {
 
             val rootOperations = mutableListOf<String>("Mutation", "Query")
 
-            rootOperations.forEach{
-                val obj = schema.getType(it).get() as ObjectTypeDefinition
-                val operationType = it
+            rootOperations.forEach{ operationType ->
+            val obj = schema.getType(operationType).get() as ObjectTypeDefinition
                 val operationList = obj.fieldDefinitions.forEach{
 
                     val params = extractParams(it, schema)
@@ -48,10 +47,10 @@ class GraphqlActionBuilder {
                         val inputName = it.name
 
                         val type: TypeName
-                        when {
-                            it.type is NonNullType ->
+                        when(it.type){
+                            is NonNullType ->
                                 type = (it.type as NonNullType).type as TypeName
-                            it.type is TypeName ->
+                            is TypeName ->
                                 type = it.type as TypeName
 //                            it.type is ListType -> //TODO: should handle listType
 //                                type = null
@@ -60,7 +59,7 @@ class GraphqlActionBuilder {
                         }
 
 
-                        var gene = getGene(inputName, type, schema)
+                        val gene = getGene(inputName, type, schema)
                         params.add(GraphqlParam(name, gene))
                     }
 

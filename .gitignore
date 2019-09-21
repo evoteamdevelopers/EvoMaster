@@ -37,5 +37,6 @@ e2e-tests/graphql-spring-examples2/target/
 experiments/target/
 /e2e-tests/spring-examples/src/em/EvoMasterTest.java
 /e2e-tests/dropwizard-examples/src/em/
+/e2e-tests/graphql-spring-examples/target/
 /snapshot.csv
 *.lst
