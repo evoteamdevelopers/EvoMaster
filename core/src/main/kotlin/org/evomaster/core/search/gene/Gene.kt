@@ -1,6 +1,8 @@
 package org.evomaster.core.search.gene
 
 import org.evomaster.core.output.OutputFormat
+import org.evomaster.core.search.EvaluatedIndividual
+import org.evomaster.core.search.service.AdaptiveParameterControl
 import org.evomaster.core.search.service.Randomness
 
 
@@ -46,6 +48,34 @@ abstract class Gene(var name: String) {
             forceNewValue: Boolean,
             allGenes: List<Gene> = listOf())
 
+    /**
+     * Apply a mutation to the current gene.
+     * A mutation is just a small change.
+     *
+     *   @param randomness the source of non-determinism
+     *   @param allGenes if the gene depends on the other (eg a Foreign Key in SQL databases),
+     *          we need to refer to them
+     */
+    abstract fun standardMutation(
+            randomness: Randomness,
+            apc: AdaptiveParameterControl,
+            allGenes: List<Gene> = listOf()
+    )
+
+    /**
+     * Apply a archived-based mutation to the current gene.
+     *
+     *   @param randomness the source of non-determinism
+     *   @param allGenes if the gene depends on the other (eg a Foreign Key in SQL databases),
+     *          we need to refer to them
+     *   @param evi the evaluated individual contains an evolution of the gene with fitness values
+     */
+    open fun archiveMutation(randomness: Randomness,
+                             allGenes: List<Gene>,
+                             apc: AdaptiveParameterControl,
+                             evi: EvaluatedIndividual<*>){
+        TODO("not implemented")
+    }
 
     /**
      * Return the value as a printable string.
@@ -90,7 +120,7 @@ abstract class Gene(var name: String) {
      * @return a recursive list of all nested genes, "this" included
      */
     open fun flatView(excludePredicate: (Gene) -> Boolean = {false}): List<Gene>{
-        return if(excludePredicate(this)) listOf() else listOf(this)
+        return listOf(this)
     }
 
     /**

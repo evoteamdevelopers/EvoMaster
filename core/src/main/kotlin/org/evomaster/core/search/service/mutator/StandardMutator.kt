@@ -1,17 +1,17 @@
 package org.evomaster.core.search.service.mutator
 
+import org.evomaster.core.EMConfig
 import org.evomaster.core.EMConfig.GeneMutationStrategy.ONE_OVER_N
 import org.evomaster.core.EMConfig.GeneMutationStrategy.ONE_OVER_N_BIASED_SQL
 import org.evomaster.core.Lazy
 import org.evomaster.core.database.DbAction
 import org.evomaster.core.database.DbActionUtils
 import org.evomaster.core.search.EvaluatedIndividual
+import org.evomaster.core.search.GeneIdUtil
 import org.evomaster.core.search.Individual
 import org.evomaster.core.search.Individual.GeneFilter.ALL
 import org.evomaster.core.search.Individual.GeneFilter.NO_SQL
 import org.evomaster.core.search.gene.*
-import java.math.BigDecimal
-import java.math.RoundingMode
 
 /**
  * make the standard mutator open for extending the mutator,
@@ -20,10 +20,6 @@ import java.math.RoundingMode
  */
 open class StandardMutator<T> : Mutator<T>() where T : Individual {
 
-    /**
-     * List where each element at position "i" has value "2^i"
-     */
-    private val intpow2 = (0..30).map { Math.pow(2.0, it.toDouble()).toInt() }
 
     override fun doesStructureMutation(individual : T): Boolean {
         return individual.canMutateStructure() &&
@@ -46,8 +42,8 @@ open class StandardMutator<T> : Mutator<T>() where T : Individual {
         val genesToMutate = genesToMutation(individual, evi)
         if(genesToMutate.isEmpty()) return mutableListOf()
 
-        //TODO update the archive-based mutation here
-
+        if(randomness.nextBoolean(config.probOfArchiveMutation))
+            return selectGenesByArchive(genesToMutate, individual, evi)
         return selectGenesByDefault(genesToMutate, individual)
     }
 
@@ -67,15 +63,15 @@ open class StandardMutator<T> : Mutator<T>() where T : Individual {
 
         var mutated = false
 
-        while (!mutated) { //no point in returning a copy that is not mutated
+        /*
+            no point in returning a copy that is not mutated,
+            as we do not use xover
+         */
+        while (!mutated) { //
 
             for (gene in genesToMutate) {
 
                 if (!randomness.nextBoolean(p)) {
-                    continue
-                }
-
-                if (gene is DisruptiveGene<*> && !randomness.nextBoolean(gene.probability)) {
                     continue
                 }
 
@@ -87,13 +83,13 @@ open class StandardMutator<T> : Mutator<T>() where T : Individual {
         return genesToSelect
     }
 
-    private fun innerMutate(individual: EvaluatedIndividual<T>, mutatedGene: MutableList<Gene>) : T{
+    private fun innerMutate(individual: EvaluatedIndividual<T>, mutatedGene: MutatedGeneSpecification?) : T{
 
         val individualToMutate = individual.individual
 
         if(doesStructureMutation(individualToMutate)){
-            val copy = (if(config.enableTrackIndividual || config.enableTrackEvaluatedIndividual) individualToMutate.next(structureMutator!!) else individualToMutate.copy()) as T
-            structureMutator.mutateStructure(copy)
+            val copy = (if(config.enableTrackIndividual || config.enableTrackEvaluatedIndividual) individualToMutate.next(structureMutator) else individualToMutate.copy()) as T
+            structureMutator.mutateStructure(copy, mutatedGene)
             return copy
         }
 
@@ -107,17 +103,18 @@ open class StandardMutator<T> : Mutator<T>() where T : Individual {
             return copy
 
         for (gene in selectGeneToMutate){
-            mutatedGene.add(gene)
-            mutateGene(gene, allGenes)
+            mutatedGene?.mutatedGenes?.add(gene)
+            /*
+             TODO
+             NOTE THAT gene.archiveMutation(...) is required to extend for archive-based mutation
+             */
+            gene.standardMutation(randomness, apc, allGenes)
         }
 
-        postActionAfterMutation(individualToMutate)
-
         return copy
-
     }
 
-    override fun mutate(individual: EvaluatedIndividual<T>, mutatedGenes: MutableList<Gene>): T {
+    override fun mutate(individual: EvaluatedIndividual<T>, mutatedGenes: MutatedGeneSpecification?): T {
 
         // First mutate the individual
         val mutatedIndividual = innerMutate(individual, mutatedGenes)
@@ -142,153 +139,90 @@ open class StandardMutator<T> : Mutator<T>() where T : Individual {
 
     }
 
-    private fun mutateGene(gene: Gene, all: List<Gene>) {
+    /**
+     * Apply archive-based mutation to select genes to mutate
+     */
+    private fun selectGenesByArchive(genesToMutate : List<Gene>, individual: T, evi: EvaluatedIndividual<T>) : List<Gene>{
 
-        when (gene) {
-            is SqlForeignKeyGene -> handleSqlForeignKeyGene(gene, all)
-            is DisruptiveGene<*> -> mutateGene(gene.gene, all)
-            is OptionalGene -> handleOptionalGene(gene, all)
-            is IntegerGene -> handleIntegerGene(gene)
-            is DoubleGene -> handleDoubleGene(gene)
-            is StringGene -> handleStringGene(gene, all)
-            else -> {
-                gene.randomize(randomness, true, all)
+        val candidatesMap = genesToMutate.map { it to GeneIdUtil.generateGeneId(individual, it) }.toMap()
+
+        val genes = when(config.geneSelectionMethod){
+            EMConfig.ArchiveGeneSelectionMethod.AWAY_BAD -> selectGenesAwayBad(genesToMutate,candidatesMap,evi)
+            EMConfig.ArchiveGeneSelectionMethod.APPROACH_GOOD -> selectGenesApproachGood(genesToMutate,candidatesMap,evi)
+            EMConfig.ArchiveGeneSelectionMethod.FEED_BACK -> selectGenesFeedback(genesToMutate, candidatesMap, evi)
+            EMConfig.ArchiveGeneSelectionMethod.NONE -> {
+                emptyList()
             }
         }
+
+        if (genes.isEmpty())
+            return selectGenesByOneDivNum(genesToMutate, genesToMutate.size)
+
+        return genes
+
     }
 
-    private fun handleSqlForeignKeyGene(gene: SqlForeignKeyGene, all: List<Gene>) {
-        gene.randomize(randomness, true, all)
+    private fun selectGenesAwayBad(genesToMutate: List<Gene>, candidatesMap : Map<Gene, String>, evi: EvaluatedIndividual<T>): List<Gene>{
+        //remove genes from candidate that has "bad" history with 90%, i.e., timesOfNoImpacts is not 0
+        val genes =  genesToMutate.filter { g->
+            evi.impactsOfGenes[candidatesMap.getValue(g)]?.timesOfNoImpacts?.let {
+                it == 0 || (it > 0 && randomness.nextBoolean(0.1))
+            }?:false
+        }
+        if(genes.isNotEmpty())
+            return selectGenesByOneDivNum(genes, genes.size)
+        else
+            return emptyList()
     }
 
-    private fun handleStringGene(gene: StringGene, all: List<Gene>) {
+    private fun selectGenesApproachGood(genesToMutate: List<Gene>, candidatesMap : Map<Gene, String>, evi: EvaluatedIndividual<T>): List<Gene>{
 
-        val p = randomness.nextDouble()
-        val s = gene.value
+        val sortedByCounter = genesToMutate.toList().sortedBy { g->
+            evi.impactsOfGenes[candidatesMap.getValue(g)]?.timesOfImpact
+        }
+
+        selectGenesWithSorted(genesToMutate, sortedByCounter).apply {
+            return selectGenesByOneDivNum(this, size)
+        }
+
+    }
+
+    private fun selectGenesWithSorted(genesToMutate: List<Gene>, sortedGeneCounter: List<Gene>) : List<Gene>{
+        val size = (genesToMutate.size * config.perOfCandidateGenesToMutate).let {
+            if(it > 1.0) it.toInt() else 1
+        }
+
+        return genesToMutate.filter { sortedGeneCounter.subList(0, size).contains(it) }
+    }
+
+    private fun selectGenesFeedback(genesToMutate: List<Gene>, candidatesMap : Map<Gene, String>, evi: EvaluatedIndividual<T>): List<Gene>{
+        val notVisited =  genesToMutate.filter { g->
+            evi.impactsOfGenes[candidatesMap.getValue(g)]?.let {
+                it.timesToManipulate == 0
+            }?:false
+        }
+        if(notVisited.isNotEmpty())
+            return selectGenesByOneDivNum(notVisited, notVisited.size)
+
+        val zero = genesToMutate.filter { g->
+            evi.impactsOfGenes[candidatesMap.getValue(g)]?.let {
+                it.counter == 0 && it.timesToManipulate > 0
+            }?:false
+        }
 
         /*
-            What type of mutations we do on Strings is strongly
-            correlated on how we define the fitness functions.
-            When dealing with equality, as we do left alignment,
-            then it makes sense to prefer insertion/deletion at the
-            end of the strings, and reward more "change" over delete/add
+            TODO: shall we control the size in case of a large size of zero?
          */
-
-        val others = all.flatMap { g -> g.flatView() }
-                .filterIsInstance<StringGene>()
-                .map { g -> g.value }
-                .filter { it != gene.value }
-
-        gene.value = when {
-            //seeding: replace
-            p < 0.02 && !others.isEmpty() -> {
-                randomness.choose(others)
-            }
-            //change
-            p < 0.8 && s.isNotEmpty() -> {
-                val delta = getDelta(start = 6, end = 3)
-                val sign = randomness.choose(listOf(-1, +1))
-                val i = randomness.nextInt(s.length)
-                val array = s.toCharArray()
-                array[i] = s[i] + (sign * delta)
-                String(array)
-            }
-            //delete last
-            p < 0.9 && s.isNotEmpty() && s.length > gene.minLength -> {
-                s.dropLast(1)
-            }
-            //append new
-            s.length < gene.maxLength -> {
-                if (s.isEmpty() || randomness.nextBoolean(0.8)) {
-                    s + randomness.nextWordChar()
-                } else {
-                    val i = randomness.nextInt(s.length)
-                    if (i == 0) {
-                        randomness.nextWordChar() + s
-                    } else {
-                        s.substring(0, i) + randomness.nextWordChar() + s.substring(i, s.length)
-                    }
-                }
-            }
-            else -> {
-                //do nothing
-                s
-            }
-        }
-    }
-
-
-    private fun handleOptionalGene(gene: OptionalGene, all: List<Gene>) {
-        if (!gene.isActive) {
-            gene.isActive = true
-        } else {
-
-            if (randomness.nextBoolean(0.01)) {
-                gene.isActive = false
-            } else {
-                mutateGene(gene.gene, all)
-            }
-        }
-    }
-
-    private fun handleDoubleGene(gene: DoubleGene) {
-        //TODO min/max for Double
-
-        gene.value = when (randomness.choose(listOf(0, 1, 2))) {
-            //for small changes
-            0 -> gene.value + randomness.nextGaussian()
-            //for large jumps
-            1 -> gene.value + (getDelta() * randomness.nextGaussian())
-            //to reduce precision, ie chop off digits after the "."
-            2 -> BigDecimal(gene.value).setScale(randomness.nextInt(15), RoundingMode.HALF_EVEN).toDouble()
-            else -> throw IllegalStateException("Regression bug")
-        }
-    }
-
-
-    private fun getDelta(
-            range: Long = Long.MAX_VALUE,
-            start: Int = intpow2.size,
-            end: Int = 10
-    ): Int {
-        val maxIndex = apc.getExploratoryValue(start, end)
-
-        var n = 0
-        for (i in 0 until maxIndex) {
-            n = i + 1
-            if (intpow2[i] > range) {
-                break
-            }
+        if(zero.isNotEmpty()){
+            return zero
         }
 
-        //choose an i for 2^i modification
-        val delta = randomness.chooseUpTo(intpow2, n)
-
-        return delta
-    }
-
-
-    private fun handleIntegerGene(gene: IntegerGene) {
-        Lazy.assert { gene.min < gene.max && gene.isMutable() }
-
-        //check maximum range. no point in having a delta greater than such range
-        val range: Long = gene.max.toLong() - gene.min.toLong()
-
-        //choose an i for 2^i modification
-        val delta = getDelta(range)
-
-        val sign = when (gene.value) {
-            gene.max -> -1
-            gene.min -> +1
-            else -> randomness.choose(listOf(-1, +1))
+        val sortedByCounter = genesToMutate.toList().sortedByDescending { g->
+            evi.impactsOfGenes[candidatesMap.getValue(g)]?.counter
         }
 
-        val res: Long = (gene.value.toLong()) + (sign * delta)
-
-        gene.value = when {
-            res > gene.max -> gene.max
-            res < gene.min -> gene.min
-            else -> res.toInt()
+        selectGenesWithSorted(genesToMutate, sortedByCounter).apply {
+            return selectGenesByOneDivNum(this, size)
         }
     }
 }

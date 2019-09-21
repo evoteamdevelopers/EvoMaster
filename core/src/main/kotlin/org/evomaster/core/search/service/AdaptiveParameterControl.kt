@@ -2,6 +2,7 @@ package org.evomaster.core.search.service
 
 import com.google.inject.Inject
 import org.evomaster.core.EMConfig
+import kotlin.math.roundToInt
 
 /**
  * Search algorithm parameters might change during the search,
@@ -28,6 +29,10 @@ class AdaptiveParameterControl {
         return getExploratoryValue(config.startNumberOfMutations, config.endNumberOfMutations )
     }
 
+    fun getBaseTaintAnalysisProbability() : Double {
+        return getExploratoryValue(config.baseTaintAnalysisProbability, 0.0)
+    }
+
     /**
      * Based on the current state of the search, ie how long has been passed
      * and how much budget is left before starting a focused search,
@@ -35,7 +40,7 @@ class AdaptiveParameterControl {
      * (when the focused search starts)
      */
     fun getExploratoryValue(start: Int, end: Int) : Int{
-        return Math.round(getExploratoryValue(start.toDouble(), end.toDouble())).toInt()
+        return getExploratoryValue(start.toDouble(), end.toDouble()).roundToInt()
     }
 
     /**

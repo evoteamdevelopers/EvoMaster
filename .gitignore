@@ -29,6 +29,8 @@ client-java/client-util/target/
 client-java/controller-api/target/
 client-java/controller/target/
 client-java/instrumentation/target/
+client-java/instrumentation-shared/target/
+client-java/database-spy/target/
 core/target/
 e2e-tests/dropwizard-examples/target/
 e2e-tests/e2e-tests-utils/target/
@@ -38,3 +40,9 @@ experiments/target/
 /e2e-tests/dropwizard-examples/src/em/
 /snapshot.csv
 *.lst
+/report/target/
+/extra_heuristics.csv
+/dbconstraint/target/
+/e2e-tests/spring-rest-postgres/target/
+/core/testWithEMB.sh
+/resource-rest-experiments/api-generator/target/
