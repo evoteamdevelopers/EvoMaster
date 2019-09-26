@@ -1,6 +1,6 @@
 package org.evomaster.e2etests.graphql.examples.petshop;
 
-import org.evomaster.client.java.instrumentation.ClassName;
+import org.evomaster.client.java.instrumentation.shared.ClassName;
 import org.evomaster.core.problem.graphql.GraphqlIndividual;
 import org.junit.jupiter.api.Test;
 import org.evomaster.core.EMConfig;
@@ -22,7 +22,7 @@ public class PetShopEMTest extends PetShopTestBase {
         clearGeneratedFiles(outputFolderName, className);
 
         handleFlaky(() -> {
-            List<String> args = getArgsWithCompilation(iterations, outputFolderName, className);
+            List<String> args = getArgsWithCompilation(iterations, outputFolderName, className, false);
             args.add("--algorithm");
             args.add(alg.toString());
 //            args.add("--problemType GRAPHQL");

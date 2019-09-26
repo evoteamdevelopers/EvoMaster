@@ -1,7 +1,40 @@
 package org.evomaster.core.search.gene
 
+import org.evomaster.core.output.OutputFormat
+import org.evomaster.core.search.service.AdaptiveParameterControl
+import org.evomaster.core.search.service.Randomness
+import kotlin.math.pow
+
 
 object GeneUtils {
+
+    /**
+     * List where each element at position "i" has value "2^i"
+     */
+    private val intpow2 = (0..30).map { 2.0.pow(it).toInt() }
+
+    fun getDelta(
+            randomness: Randomness,
+            apc: AdaptiveParameterControl,
+            range: Long = Long.MAX_VALUE,
+            start: Int = intpow2.size,
+            end: Int = 10
+    ): Int {
+        val maxIndex = apc.getExploratoryValue(start, end)
+
+        var n = 0
+        for (i in 0 until maxIndex) {
+            n = i + 1
+            if (intpow2[i] > range) {
+                break
+            }
+        }
+
+        //choose an i for 2^i modification
+        val delta = randomness.chooseUpTo(intpow2, n)
+
+        return delta
+    }
 
     /**
      * Given a number [x], return its string representation, with padded 0s
@@ -88,6 +121,99 @@ object GeneUtils {
                 second.value = 59
             }
         }
+    }
+
+    /**
+        [applyEscapes] - applies various escapes needed for assertion generation.
+     Moved here to allow extension to other purposes (SQL escapes, for example) and to
+     allow a more consistent way of making changes.
+
+     * This includes escaping special chars for java and kotlin.
+     * Currently, Strings containing "@" are split, on the assumption (somewhat premature, admittedly) that
+     * the symbol signifies an object reference (which would likely cause the assertion to fail).
+     * TODO: Tests are needed to make sure this does not break.
+     * Escapes may have to be applied differently between:
+         * Java and Kotlin
+         * calls and assertions
+
+     */
+
+    fun applyEscapes(string: String, mode: String = "none", format: OutputFormat = OutputFormat.KOTLIN_JUNIT_5): String{
+        val ret = when (mode){
+            "uris" -> applyUriEscapes(string, format)
+            "queries" -> applyQueryEscapes(string, format)
+            "assertions" -> applyAssertionEscapes(string, format)
+            "json" -> applyJsonEscapes(string, format)
+            "text" -> applyTextEscapes(string, format)
+            else -> string
+        }
+        //if(forQueries) return applyQueryEscapes(string, format)
+        //else return applyAssertionEscapes(string, format)
+        return ret
+    }
+
+    fun applyJsonEscapes(string: String, format: OutputFormat = OutputFormat.JAVA_JUNIT_4):String{
+        val ret = when{
+            format.isKotlin() -> string.replace("\$", "\\\$")
+            else -> string
+        }
+        return ret
+                .replace("\\", """\\""")
+                .replace("\"", "\\\"")
+
+
+    }
+
+    fun applyUriEscapes(string: String, format: OutputFormat = OutputFormat.JAVA_JUNIT_4):String{
+        val ret = if(format.isKotlin()) string.replace("\$", "%24")
+        else string
+        return ret.replace("\\", "%5C")
+    }
+
+    fun applyTextEscapes(string: String, format: OutputFormat = OutputFormat.JAVA_JUNIT_4):String{
+        val ret = when{
+            format.isKotlin() -> string.replace("\$", "\\\$")
+            else -> string
+        }
+        return ret
+                .replace("\\", """\\""")
+                .replace("\"", "\\\"")
+
+    }
+
+    fun applyAssertionEscapes(string: String, format: OutputFormat = OutputFormat.JAVA_JUNIT_4): String {
+        var ret = ""
+        val timeRegEx = "[0-2]?[0-9]:[0-5][0-9]".toRegex()
+        ret = string.split("@")[0] //first split off any reference that might differ between runs
+                .split(timeRegEx)[0] //split off anything after specific timestamps that might differ
+                .replace("\\", """\\""")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\b", "\\b")
+                .replace("\t", "\\t")
+
+        if (format.isKotlin()) return ret.replace("\$", "\${\'\$\'}")
+        //ret.replace("\$", "\\\$")
+        else return ret
+    }
+
+    fun applyQueryEscapes(string: String, format: OutputFormat = OutputFormat.JAVA_JUNIT_4): String {
+        val ret = string
+                //.replace("""\"""", """\\\"""")
+                //.replace("""\\""", """\\\\""")
+                .replace("\\", """\\""")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\b", "\\b")
+                .replace("\t", "\\t")
+
+
+
+        if (format.isKotlin()) return ret.replace("\$", "%24")
+        //ret.replace("\$", "\\\$")
+        else return ret
     }
 
 }

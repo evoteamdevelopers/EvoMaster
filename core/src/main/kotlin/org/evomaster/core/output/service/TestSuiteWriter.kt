@@ -10,6 +10,7 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import java.time.ZonedDateTime
 
+
 /**
  * Given a Solution as input, convert it to a string representation of
  * the tests that can be written to file and be compiled
@@ -30,26 +31,38 @@ class TestSuiteWriter {
 
     fun writeTests(
             solution: Solution<*>,
-            controllerName: String
+            controllerName: String?
     ) {
 
         val name = TestSuiteFileName(config.testSuiteFileName)
 
         val content = convertToCompilableTestCode(solution, name, controllerName)
         saveToDisk(content, config, name)
+
+        /*if (config.expectationsActive || config.enableBasicAssertions){
+            val numberMatcher = addAdditionalNumberMatcher(name)
+            if (name.hasPackage() && config.outputFormat.isJavaOrKotlin()) {
+                saveToDisk(numberMatcher, config, TestSuiteFileName("${name.getPackage()}.NumberMatcher"))
+            }
+            else{
+                saveToDisk(numberMatcher, config, TestSuiteFileName("NumberMatcher"))
+            }
+        }*/
+
     }
 
 
     private fun convertToCompilableTestCode(
             solution: Solution<*>,
             testSuiteFileName: TestSuiteFileName,
-            controllerName: String
+            controllerName: String?
             )
             : String {
 
         val lines = Lines()
 
         header(solution, testSuiteFileName, lines)
+
         lines.indented {
 
             beforeAfterMethods(controllerName, lines)
@@ -136,12 +149,22 @@ class TestSuiteWriter {
         // TODO: BMR - this is temporarily added as WiP. Should we have a more targeted import (i.e. not import everything?)
         if(config.enableBasicAssertions){
             addImport("org.hamcrest.Matchers.*", lines, true)
+            //addImport("org.hamcrest.core.AnyOf.anyOf", lines, true)
+            addImport("io.restassured.config.JsonConfig", lines)
+            addImport("io.restassured.path.json.config.JsonPathConfig", lines)
+            addImport("org.evomaster.client.java.controller.contentMatchers.NumberMatcher.*", lines, true)
         }
 
         if(config.expectationsActive) {
             addImport("org.evomaster.client.java.controller.expect.ExpectationHandler.expectationHandler", lines, true)
         }
         //addImport("static org.hamcrest.core.Is.is", lines, format)
+
+        lines.addEmpty(2)
+
+        /*if(config.enableBasicAssertions && config.outputFormat.isJava()){
+            addAdditionalNumberMatcher(lines)
+        }*/
 
         lines.addEmpty(2)
 
@@ -153,21 +176,31 @@ class TestSuiteWriter {
         }
     }
 
-    private fun staticVariables(controllerName: String, lines: Lines){
+    private fun staticVariables(controllerName: String?, lines: Lines){
 
         if(config.outputFormat.isJava()) {
-            lines.add("private static final SutHandler $controller = new $controllerName();")
-            lines.add("private static String $baseUrlOfSut;")
+            if(! config.blackBox) {
+                lines.add("private static final SutHandler $controller = new $controllerName();")
+                lines.add("private static String $baseUrlOfSut;")
+            } else {
+                lines.add("private static String $baseUrlOfSut = \"${config.bbTargetUrl}\";")
+            }
+
             if(config.expectationsActive){
                 lines.add("private static boolean activeExpectations = false;")
             }
+
         } else if(config.outputFormat.isKotlin()) {
-            lines.add("private val $controller : SutHandler = $controllerName()")
-            lines.add("private lateinit var $baseUrlOfSut: String")
+            if(! config.blackBox) {
+                lines.add("private val $controller : SutHandler = $controllerName()")
+                lines.add("private lateinit var $baseUrlOfSut: String")
+            } else {
+                lines.add("private val $baseUrlOfSut = \"${config.bbTargetUrl}\"")
+            }
+
             if(config.expectationsActive){
                 lines.add("private val $activeExpectations = false")
             }
-
         }
         //Note: ${config.expectationsActive} can be used to get the active setting, but the default
         // for generated code should be false.
@@ -189,13 +222,24 @@ class TestSuiteWriter {
         }
 
         lines.block {
-            addStatement("baseUrlOfSut = $controller.startSut()", lines)
-            addStatement("assertNotNull(baseUrlOfSut)", lines)
+            if(! config.blackBox) {
+                addStatement("baseUrlOfSut = $controller.startSut()", lines)
+                addStatement("assertNotNull(baseUrlOfSut)", lines)
+            }
+
             addStatement("RestAssured.urlEncodingEnabled = false", lines)
+
+            if (config.enableBasicAssertions){
+                addStatement("RestAssured.config = RestAssured.config().jsonConfig(JsonConfig.jsonConfig().numberReturnType(JsonPathConfig.NumberReturnType.DOUBLE))", lines)
+            }
         }
     }
 
     private fun tearDownMethod(lines: Lines){
+
+        if(config.blackBox) {
+           return
+        }
 
         val format = config.outputFormat
 
@@ -216,6 +260,10 @@ class TestSuiteWriter {
 
     private fun initTestMethod(lines: Lines){
 
+        if(config.blackBox) {
+            return
+        }
+
         val format = config.outputFormat
 
         when {
@@ -232,7 +280,7 @@ class TestSuiteWriter {
         }
     }
 
-    private fun beforeAfterMethods(controllerName: String, lines: Lines) {
+    private fun beforeAfterMethods(controllerName: String?, lines: Lines) {
 
         lines.addEmpty()
 
@@ -296,5 +344,4 @@ class TestSuiteWriter {
             lines.append(";")
         }
     }
-
 }

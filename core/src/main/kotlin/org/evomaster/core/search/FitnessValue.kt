@@ -1,6 +1,10 @@
 package org.evomaster.core.search
 
+import org.evomaster.core.EMConfig
 import org.evomaster.core.database.DatabaseExecution
+import org.evomaster.core.EMConfig.SecondaryObjectiveStrategy.*
+import org.evomaster.core.search.service.IdMapper
+import kotlin.math.min
 
 /**
 As the number of targets is unknown, we cannot have
@@ -72,7 +76,7 @@ class FitnessValue(
 
     /**
      * We keep track of DB interactions per action.
-     * However, there are are cases in which we only care of aggregated data for all actions.
+     * However, there are cases in which we only care of aggregated data for all actions.
      * Instead of re-computing them each time, we just do it once and save the results
      */
     fun aggregateDatabaseData(){
@@ -91,6 +95,8 @@ class FitnessValue(
     fun setDatabaseExecution(actionIndex: Int, databaseExecution: DatabaseExecution){
         databaseExecutions[actionIndex] = databaseExecution
     }
+
+    fun isAnyDatabaseExecutionInfo() = databaseExecutions.isNotEmpty()
 
     fun getViewOfData(): Map<Int, Heuristics> {
         return targets
@@ -119,13 +125,27 @@ class FitnessValue(
         updateTarget(id, MAX_VALUE)
     }
 
+    fun potentialFoundFaults(idMapper: IdMapper) : List<String>{
+        return targets.keys
+                .filter { idMapper.isFault(it)}
+                .map { idMapper.getDescriptiveId(it) }
+    }
+
+    /**
+     * Set the heuristic [value] for the given target [id].
+     * If already existing, replace it only if better.
+     */
     fun updateTarget(id: Int, value: Double, actionIndex : Int = -1) {
 
         if (value < 0 || value > MAX_VALUE) {
             throw IllegalArgumentException("Invalid value: $value")
         }
 
-        targets[id] = Heuristics(value, actionIndex)
+        val current = targets[id]
+
+        if(current == null || value > current.distance) {
+            targets[id] = Heuristics(value, actionIndex)
+        }
     }
 
     /**
@@ -152,7 +172,12 @@ class FitnessValue(
      * @param other, the one we compare to
      * @param targetSubset, only calculate subsumption on these testing targets
      */
-    fun subsumes(other: FitnessValue, targetSubset: Set<Int>): Boolean {
+    fun subsumes(
+            other: FitnessValue,
+            targetSubset: Set<Int>,
+            strategy: EMConfig.SecondaryObjectiveStrategy,
+            bloatControlForSecondaryObjective: Boolean)
+            : Boolean {
 
         var atLeastOneBetter = false
 
@@ -164,16 +189,30 @@ class FitnessValue(
                 return false
             }
 
-            val extra = compareExtraToMinimize(k, other)
+            val extra = compareExtraToMinimize(k, other, strategy)
 
-            if (v > z ||
-                    (v == z && extra > 0) ||
-                    (v == z && extra == 0 && this.size < other.size)) {
-                atLeastOneBetter = true
+            //FIXME this is inconsistent with what used in Archive. Should be
+            //refactored, avoiding copy&paste
+            if(bloatControlForSecondaryObjective){
+                if (v > z ||
+                        (v == z && this.size < other.size) ||
+                        (v == z && this.size == other.size && extra > 0)) {
+                    atLeastOneBetter = true
+                }
+            } else {
+                if (v > z ||
+                        (v == z && extra > 0) ||
+                        (v == z && extra == 0 && this.size < other.size)) {
+                    atLeastOneBetter = true
+                }
             }
         }
 
         return atLeastOneBetter
+    }
+
+    fun averageExtraDistancesToMinimize(actionIndex: Int): Double{
+        return averageDistance(extraToMinimize[actionIndex])
     }
 
     /**
@@ -181,34 +220,71 @@ class FitnessValue(
      *
      * @return 0 if equivalent, 1 if this is better, and -1 otherwise
      */
-    fun compareExtraToMinimize(target: Int, other: FitnessValue): Int {
+    fun compareExtraToMinimize(
+            target: Int,
+            other: FitnessValue,
+            strategy: EMConfig.SecondaryObjectiveStrategy)
+            : Int {
 
-        //TODO parameter to experiment with
-        //return compareByRewardMore(other)
-        return compareByReduce(target, other)
+        return when(strategy){
+            AVG_DISTANCE -> compareAverage(target, other)
+            AVG_DISTANCE_SAME_N_ACTIONS -> compareAverageSameNActions(target, other)
+            BEST_MIN -> compareByBestMin(target, other)
+        }
     }
 
-    fun averageExtraDistancesToMinimize(actionIndex: Int): Double{
-        return aggregateDistances(extraToMinimize[actionIndex])
+
+    private fun isEmptyList(list: List<Double>?) : Boolean{
+        return list == null || list.isEmpty()
     }
 
-    private fun aggregateDistances(distances: List<Double>?): Double {
-        if (distances == null || distances.isEmpty()) {
-            return Double.MAX_VALUE
+    private fun averageDistance(distances: List<Double>?): Double {
+        if (isEmptyList(distances)) {
+            //return 0.0
+            throw IllegalArgumentException("Cannot compute average on empty list")
         }
 
-        val sum = distances.map { v -> v / distances.size }.sum()
+        val sum = distances!!.map { v -> v / distances.size }.sum()
 
         return sum
     }
 
-    private fun compareByReduce(target: Int, other: FitnessValue): Int {
+    private fun compareAverageSameNActions(target: Int, other: FitnessValue): Int {
 
         val thisAction = targets[target]?.actionIndex
         val otherAction = other.targets[target]?.actionIndex
 
-        val ts = aggregateDistances(this.extraToMinimize[thisAction])
-        val os = aggregateDistances(other.extraToMinimize[otherAction])
+        val thisN = databaseExecutions[thisAction]?.numberOfSqlCommands ?: 0
+        val otherN = other.databaseExecutions[otherAction]?.numberOfSqlCommands ?: 0
+
+        return when {
+            thisN > otherN -> 1
+            thisN < otherN -> -1
+            else -> compareAverage(target, other)
+        }
+    }
+
+    private fun compareAverage(target: Int, other: FitnessValue): Int {
+
+        val thisAction = targets[target]?.actionIndex
+        val otherAction = other.targets[target]?.actionIndex
+
+        val thisDistances = this.extraToMinimize[thisAction]
+        val otherDistances = other.extraToMinimize[otherAction]
+
+        if(isEmptyList(thisDistances) && isEmptyList(otherDistances)){
+            return 0
+        }
+        if(!isEmptyList(thisDistances) && isEmptyList(otherDistances)){
+            return +1
+        }
+        if(isEmptyList(thisDistances) && !isEmptyList(otherDistances)){
+            return -1
+        }
+
+
+        val ts = averageDistance(thisDistances)
+        val os = averageDistance(otherDistances)
 
         return when {
             ts < os -> +1
@@ -217,54 +293,52 @@ class FitnessValue(
         }
     }
 
-    /*
-        TODO: add back and fix. Use for experiments.
-     */
 
-//    private fun compareByRewardMore(other: FitnessValue): Int {
-//        val thisLength = this.extraToMinimize.size
-//        val otherLength = other.extraToMinimize.size
-//        val minLen = Math.min(thisLength, otherLength)
-//
-//        if (minLen > 0) {
-//            for (i in 0..(minLen - 1)) {
-//                val te = this.extraToMinimize[i]
-//                val oe = other.extraToMinimize[i]
-//
-//                /*
-//                    We prioritize the improvement of lowest
-//                    heuristics, as more likely to be covered (ie 0)
-//                    first.
-//                */
-//
-//                if (te < oe) {
-//                    return +1
-//                } else if (te > oe) {
-//                    return -1
-//                }
-//            }
-//        }
-//
-//        if (thisLength == otherLength) {
-//            return 0
-//        }
-//
-//        /*
-//            up to min size, same values of the heuristics.
-//            But one test is doing more stuff, as it has more extra
-//            heuristics. And so we reward it.
-//
-//            However, there is big risk of bloat. So, let's put
-//            an arbitrary low limit.
-//         */
-//        if (minLen >= 3) { //TODO should be a parameter to experiment with
-//            return 0
-//        }
-//
-//        if (thisLength > otherLength) {
-//            return +1
-//        } else {
-//            return -1
-//        }
-//    }
+    private fun compareByBestMin(target: Int, other: FitnessValue): Int {
+
+        val thisAction = targets[target]?.actionIndex
+        val otherAction = other.targets[target]?.actionIndex
+
+        val thisLength = this.extraToMinimize[thisAction]?.size ?: 0
+        val otherLength = other.extraToMinimize[otherAction]?.size ?: 0
+        val minLen = min(thisLength, otherLength)
+
+        if (minLen > 0) {
+            for (i in 0 until minLen) {
+                val te = this.extraToMinimize[thisAction]!![i]
+                val oe = other.extraToMinimize[otherAction]!![i]
+
+                /*
+                    We prioritize the improvement of lowest
+                    heuristics, as more likely to be covered (ie 0)
+                    first.
+                */
+
+                if (te < oe) {
+                    return +1
+                } else if (te > oe) {
+                    return -1
+                }
+            }
+        }
+
+        val thisN = databaseExecutions[thisAction]?.numberOfSqlCommands ?: 0
+        val otherN = other.databaseExecutions[otherAction]?.numberOfSqlCommands ?: 0
+
+        /*
+            if same min, reward number of SQL commands: if more, the
+            better.
+            If even with that we cannot make a choice, then reward
+            the one with less heuristics, as that mean it had more
+            success with the SQL commands
+         */
+
+        return when {
+            thisN > otherN -> 1
+            thisN < otherN -> -1
+            thisLength > otherLength -> -1
+            thisLength < otherLength -> 1
+            else -> 0
+        }
+    }
 }

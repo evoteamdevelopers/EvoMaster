@@ -16,6 +16,7 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 
 import static org.evomaster.client.java.controller.internal.db.ParserUtils.*;
 
@@ -34,7 +35,7 @@ public class SqlHandler {
     /**
      * The heuristics based on the SQL execution
      */
-    private final List<Double> distances;
+    private final List<PairCommandDistance> distances;
 
     //see ExecutionDto
     private final Map<String, Set<String>> queriedData;
@@ -43,9 +44,13 @@ public class SqlHandler {
     private final Map<String, Set<String>> failedWhere;
     private final List<String> deletedData;
 
+    private int numberOfSqlCommands;
 
     private volatile Connection connection;
 
+    private volatile boolean calculateHeuristics;
+
+    private volatile boolean extractSqlExecution;
 
     public SqlHandler() {
         buffer = new CopyOnWriteArrayList<>();
@@ -55,6 +60,9 @@ public class SqlHandler {
         insertedData = new ConcurrentHashMap<>();
         failedWhere = new ConcurrentHashMap<>();
         deletedData = new CopyOnWriteArrayList<>();
+
+        calculateHeuristics = true;
+        numberOfSqlCommands = 0;
     }
 
     public void reset() {
@@ -65,6 +73,7 @@ public class SqlHandler {
         insertedData.clear();
         failedWhere.clear();
         deletedData.clear();
+        numberOfSqlCommands = 0;
     }
 
     public void setConnection(Connection connection) {
@@ -73,6 +82,10 @@ public class SqlHandler {
 
     public void handle(String sql) {
         Objects.requireNonNull(sql);
+
+        if(!calculateHeuristics && !extractSqlExecution){
+            return;
+        }
 
         buffer.add(sql);
 
@@ -85,22 +98,30 @@ public class SqlHandler {
         } else if(isUpdate(sql)){
             mergeNewData(updatedData, ColumnTableAnalyzer.getUpdatedDataFields(sql));
         }
+
+        numberOfSqlCommands++;
     }
 
     public ExecutionDto getExecutionDto() {
+
+        if(!calculateHeuristics && !extractSqlExecution){
+            return null;
+        }
+
         ExecutionDto executionDto = new ExecutionDto();
         executionDto.queriedData.putAll(queriedData);
         executionDto.failedWhere.putAll(failedWhere);
         executionDto.insertedData.putAll(insertedData);
         executionDto.updatedData.putAll(updatedData);
         executionDto.deletedData.addAll(deletedData);
+        executionDto.numberOfSqlCommands = this.numberOfSqlCommands;
 
         return executionDto;
     }
 
-    public List<Double> getDistances() {
+    public List<PairCommandDistance> getDistances() {
 
-        if (connection == null) {
+        if (connection == null || !calculateHeuristics) {
             return distances;
         }
 
@@ -114,9 +135,9 @@ public class SqlHandler {
                         we are iterating on (copy on write), and we clear
                         the buffer after this loop.
                      */
-                    if (isSelect(sql)) { //TODO Delete/Insert/Update
+                    if (isSelect(sql) || isDelete(sql) || isUpdate(sql)) {
                         double dist = computeDistance(sql);
-                        distances.add(dist);
+                        distances.add(new PairCommandDistance(sql, dist));
                     }
                 });
         //side effects on buffer is not important, as it is just a cache
@@ -126,7 +147,7 @@ public class SqlHandler {
     }
 
 
-    public Double computeDistance(String command) {
+    private Double computeDistance(String command) {
 
         if (connection == null) {
             throw new IllegalStateException("Trying to calculate SQL distance with no DB connection");
@@ -141,39 +162,88 @@ public class SqlHandler {
             return Double.MAX_VALUE;
         }
 
+
+        Map<String, Set<String>> columns = extractColumnsInvolvedInWhere(statement);
+
         /*
-           TODO
-           following does not handle the case of sub-selects involving other
-           tables... but likely that is not something we need to support right now
-
-           TODO:
-           this might be likely unnecessary... we are only interested in the variables used
-           in the WHERE. Furthermore, this would not support DELETE/INSERT/UPDATE.
-           So, we just need to create a new SELECT based on that.
-           But SELECT could be complex with many JOINs... whereas DIP would be simple(r)?
+            even if columns.isEmpty(), we need to check if any data was present
          */
-        String modified = SelectHeuristics.addFieldsToSelect(command);
-        modified = SelectHeuristics.removeConstraints(modified);
-        modified = SelectHeuristics.removeOperations(modified);
 
-        QueryResult data;
-
-        try {
-            data = SqlScriptRunner.execCommand(connection, modified);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+        double dist;
+        if(columns.isEmpty()){
+            //TODO check if table(s) not empty, and give >0 otherwise
+            dist = 0;
+        } else {
+            dist = getDistanceForWhere(command, columns);
         }
 
-        double dist = SelectHeuristics.computeDistance(command, data);
-
         if (dist > 0) {
-            mergeNewData(failedWhere, extractColumnsInvolvedInWhere(statement));
+            mergeNewData(failedWhere, columns);
         }
 
         return dist;
     }
 
+    private double getDistanceForWhere(String command, Map<String, Set<String>> columns) {
+        String select;
+
+        /*
+           TODO:
+           this might be likely unnecessary... we are only interested in the variables used
+           in the WHERE. Furthermore, this would not support DELETE/INSERT/UPDATE.
+           So, we just need to create a new SELECT based on that.
+           But SELECT could be complex with many JOINs... whereas DIP would be simple(r)?
+
+           TODO: we need a general solution
+         */
+        if(isSelect(command)) {
+            select = SelectTransformer.addFieldsToSelect(command);
+            select = SelectTransformer.removeConstraints(select);
+            select = SelectTransformer.removeOperations(select);
+        } else {
+            if(columns.size() > 1){
+                SimpleLogger.uniqueWarn("Cannot analyze: " + command);
+            }
+            Map.Entry<String, Set<String>> mapping = columns.entrySet().iterator().next();
+            select = createSelectForSingleTable(mapping.getKey(), mapping.getValue());
+        }
+
+        QueryResult data;
+
+        try {
+            data = SqlScriptRunner.execCommand(connection, select);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        return HeuristicsCalculator.computeDistance(command, data);
+    }
+
+    private String createSelectForSingleTable(String tableName, Set<String> columns){
+
+        StringBuilder buffer = new StringBuilder();
+        buffer.append("SELECT ");
+
+        String variables = columns.stream().collect(Collectors.joining(", "));
+
+        buffer.append(variables);
+        buffer.append(" FROM ");
+        buffer.append(tableName);
+
+        return buffer.toString();
+    }
+
+    /**
+     *  Check the fields involved in the WHERE clause (if any).
+     *  Return a map from table name to column names of the involved fields.
+     */
     private static Map<String, Set<String>> extractColumnsInvolvedInWhere(Statement statement) {
+
+        /*
+           TODO
+           following does not handle the case of sub-selects involving other
+           tables... but likely that is not something we need to support right now
+         */
 
         Map<String, Set<String>> data = new HashMap<>();
 
@@ -240,4 +310,19 @@ public class SqlHandler {
         }
     }
 
+    public boolean isCalculateHeuristics() {
+        return calculateHeuristics;
+    }
+
+    public boolean isExtractSqlExecution() {
+        return extractSqlExecution;
+    }
+
+    public void setCalculateHeuristics(boolean calculateHeuristics) {
+        this.calculateHeuristics = calculateHeuristics;
+    }
+
+    public void setExtractSqlExecution(boolean extractSqlExecution) {
+        this.extractSqlExecution = extractSqlExecution;
+    }
 }

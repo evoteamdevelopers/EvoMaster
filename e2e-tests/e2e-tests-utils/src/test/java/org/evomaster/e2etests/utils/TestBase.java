@@ -3,7 +3,7 @@ package org.evomaster.e2etests.utils;
 import org.apache.commons.io.FileUtils;
 import org.evomaster.client.java.controller.InstrumentedSutStarter;
 import org.evomaster.client.java.controller.internal.SutController;
-import org.evomaster.client.java.instrumentation.ClassName;
+import org.evomaster.client.java.instrumentation.shared.ClassName;
 import org.evomaster.core.output.OutputFormat;
 import org.evomaster.core.output.compiler.CompilerForTestGenerated;
 import org.evomaster.core.problem.graphql.GraphqlIndividual;
@@ -14,6 +14,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.platform.launcher.listeners.TestExecutionSummary;
 
 import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -54,7 +56,6 @@ public abstract class TestBase {
 
 
 
-
     protected String outputFolderPath(String outputFolderName){
         return "target/em-tests/" + outputFolderName;
     }
@@ -66,6 +67,16 @@ public abstract class TestBase {
             int iterations,
             Consumer<List<String>> lambda) throws Throwable{
 
+        runTestHandlingFlaky(outputFolderName, fullClassName, iterations, true, lambda);
+    }
+
+    protected void runTestHandlingFlaky(
+            String outputFolderName,
+            String fullClassName,
+            int iterations,
+            boolean createTests,
+            Consumer<List<String>> lambda) throws Throwable{
+
         /*
             Years have passed, still JUnit 5 does not handle global test timeouts :(
             https://github.com/junit-team/junit5/issues/80
@@ -74,7 +85,7 @@ public abstract class TestBase {
             ClassName className = new ClassName(fullClassName);
             clearGeneratedFiles(outputFolderName, className);
 
-            List<String> args = getArgsWithCompilation(iterations, outputFolderName, className);
+            List<String> args = getArgsWithCompilation(iterations, outputFolderName, className, createTests);
 
             handleFlaky(
                     () -> lambda.accept(new ArrayList<>(args))
@@ -88,12 +99,24 @@ public abstract class TestBase {
             int iterations,
             Consumer<List<String>> lambda) throws Throwable {
 
-        runTestHandlingFlaky(outputFolderName, fullClassName, iterations, lambda);
+        runTestHandlingFlakyAndCompilation(outputFolderName, fullClassName, iterations, true, lambda);
+    }
 
-        assertTimeoutPreemptively(Duration.ofMinutes(2), () -> {
-            ClassName className = new ClassName(fullClassName);
-            compileRunAndVerifyTests(outputFolderName, className);
-        });
+    protected void runTestHandlingFlakyAndCompilation(
+            String outputFolderName,
+            String fullClassName,
+            int iterations,
+            boolean createTests,
+            Consumer<List<String>> lambda) throws Throwable {
+
+        runTestHandlingFlaky(outputFolderName, fullClassName, iterations, createTests,lambda);
+
+        if (createTests){
+            assertTimeoutPreemptively(Duration.ofMinutes(2), () -> {
+                ClassName className = new ClassName(fullClassName);
+                compileRunAndVerifyTests(outputFolderName, className);
+            });
+        }
     }
 
     protected void compileRunAndVerifyTests(String outputFolderName, ClassName className){
@@ -105,10 +128,19 @@ public abstract class TestBase {
         klass = loadClass(className);
         assertNotNull(klass);
 
+        StringWriter writer = new StringWriter();
+        PrintWriter pw = new PrintWriter(writer);
+
         TestExecutionSummary summary = JUnitTestRunner.runTestsInClass(klass);
+        summary.printFailuresTo(pw);
+        String failures = writer.toString();
+
         assertTrue(summary.getContainersFoundCount() > 0);
-        assertEquals(0, summary.getContainersFailedCount());
+        assertEquals(0, summary.getContainersFailedCount(), failures);
         assertTrue(summary.getContainersSucceededCount() > 0);
+        assertTrue(summary.getTestsFoundCount() > 0);
+        assertEquals(0, summary.getTestsFailedCount(), failures);
+        assertTrue(summary.getTestsSucceededCount() > 0);
     }
 
     protected void clearGeneratedFiles(String outputFolderName, ClassName testClassName){
@@ -142,7 +174,11 @@ public abstract class TestBase {
         );
     }
 
-    protected abstract List<String> getArgsWithCompilation(int iterations, String outputFolderName, ClassName testClassName);
+    protected List<String> getArgsWithCompilation(int iterations, String outputFolderName, ClassName testClassName){
+        return getArgsWithCompilation(iterations, outputFolderName, testClassName, true);
+    }
+
+    protected abstract List<String> getArgsWithCompilation(int iterations, String outputFolderName, ClassName testClassName, boolean createTests);
 
 
 

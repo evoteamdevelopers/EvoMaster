@@ -1,11 +1,13 @@
 package org.evomaster.client.java.controller;
 
+import org.evomaster.client.java.controller.api.dto.ActionDto;
 import org.evomaster.client.java.controller.internal.db.StandardOutputTracker;
+import org.evomaster.client.java.instrumentation.Action;
+import org.evomaster.client.java.instrumentation.InputProperties;
 import org.evomaster.client.java.utils.SimpleLogger;
 import org.evomaster.client.java.controller.internal.SutController;
 import org.evomaster.client.java.databasespy.P6SpyFormatter;
 import org.evomaster.client.java.instrumentation.AdditionalInfo;
-import org.evomaster.client.java.instrumentation.InstrumentingAgent;
 import org.evomaster.client.java.instrumentation.TargetInfo;
 import org.evomaster.client.java.instrumentation.external.JarAgentLocator;
 import org.evomaster.client.java.instrumentation.external.ServerController;
@@ -150,11 +152,11 @@ public abstract class ExternalSutController extends SutController {
                 serverController = new ServerController();
             }
             int port = serverController.startServer();
-            command.add("-D" + InstrumentingAgent.EXTERNAL_PORT_PROP + "=" + port);
+            command.add("-D" + InputProperties.EXTERNAL_PORT_PROP + "=" + port);
 
             String driver = getDatabaseDriverName();
             if (driver != null && !driver.isEmpty()) {
-                command.add("-D" + InstrumentingAgent.SQL_DRIVER + "=" + driver);
+                command.add("-D" + InputProperties.SQL_DRIVER + "=" + driver);
             }
 
             String jarPath = JarAgentLocator.getAgentJarPath();
@@ -318,9 +320,9 @@ public abstract class ExternalSutController extends SutController {
 
 
     @Override
-    public final void newActionSpecificHandler(int actionIndex) {
+    public final void newActionSpecificHandler(ActionDto dto) {
         if (isInstrumentationActivated()) {
-            serverController.setActionIndex(actionIndex);
+            serverController.setAction(new Action(dto.index, dto.inputVariables));
         }
     }
 
@@ -405,9 +407,10 @@ public abstract class ExternalSutController extends SutController {
 
                     /*
                         if we arrive here, it means the process has no more output.
-                        this could happen if it was started with some misconfiguration
+                        this could happen if it was started with some misconfiguration, or
+                        if it has been stopped
                      */
-                    if(! process.isAlive()){
+                    if(process == null || ! process.isAlive()){
                         SimpleLogger.warn("SUT has terminated");
                     } else {
                         SimpleLogger.warn("SUT is still alive, but its output was closed before" +
@@ -418,7 +421,7 @@ public abstract class ExternalSutController extends SutController {
                     latch.countDown();
 
                 } catch (Exception e) {
-                    SimpleLogger.error(e.toString());
+                    SimpleLogger.error("Failed to handle external process printer", e);
                 }
             });
 

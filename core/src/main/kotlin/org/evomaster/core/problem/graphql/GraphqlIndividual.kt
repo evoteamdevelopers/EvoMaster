@@ -72,8 +72,8 @@ class GraphqlIndividual (
         }
     }
 
-    override fun next(trackOperator: TrackOperator) : TraceableElement?{
-        getTrack()?:return GraphqlIndividual(
+    override fun next(trackOperator: TrackOperator) : GraphqlIndividual?{
+        getTracking()?:return GraphqlIndividual(
                 actions.map { a -> a.copy() as GraphqlAction } as MutableList<GraphqlAction>,
                 sampleType,
                 dbInitialization.map { d -> d.copy() as DbAction } as MutableList<DbAction>,
@@ -83,20 +83,21 @@ class GraphqlIndividual (
                 sampleType,
                 dbInitialization.map { d -> d.copy() as DbAction } as MutableList<DbAction>,
                 trackOperator,
-                getTrack()!!.plus(this).map { (it as GraphqlIndividual).copy() as GraphqlIndividual }.toMutableList()
+                getTracking()!!.plus(this).map { (it as GraphqlIndividual).copy() as GraphqlIndividual }.toMutableList()
         )
+
     }
     override fun copy(withTrack: Boolean): GraphqlIndividual {
         when(withTrack){
             false-> return copy() as GraphqlIndividual
             else ->{
-                getTrack()?:return copy() as GraphqlIndividual
+                getTracking()?:return copy() as GraphqlIndividual
                 return GraphqlIndividual(
                         actions.map { a -> a.copy() as GraphqlAction } as MutableList<GraphqlAction>,
                         sampleType,
                         dbInitialization.map { d -> d.copy() as DbAction } as MutableList<DbAction>,
                         trackOperator!!,
-                        getTrack()!!.map { (it as GraphqlIndividual).copy() as GraphqlIndividual }.toMutableList()
+                        getTracking()!!.map { (it as GraphqlIndividual).copy() as GraphqlIndividual }.toMutableList()
                 )
             }
         }
