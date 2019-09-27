@@ -1,15 +1,16 @@
 package org.evomaster.client.java.instrumentation.staticstate;
 
+import org.evomaster.client.java.instrumentation.Action;
 import org.evomaster.client.java.instrumentation.AdditionalInfo;
-import org.evomaster.client.java.instrumentation.ObjectiveNaming;
+import org.evomaster.client.java.instrumentation.shared.ObjectiveNaming;
 import org.evomaster.client.java.instrumentation.TargetInfo;
+import org.evomaster.client.java.instrumentation.shared.ReplacementType;
 import org.evomaster.client.java.instrumentation.heuristic.HeuristicsForJumps;
 import org.evomaster.client.java.instrumentation.heuristic.Truthness;
+import org.evomaster.client.java.instrumentation.shared.StringSpecializationInfo;
+import org.evomaster.client.java.instrumentation.shared.TaintInputName;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -43,11 +44,21 @@ public class ExecutionTracer {
     private static int actionIndex = 0;
 
     /**
+     * A set of possible values used in the tests, needed for some kinds
+     * of taint analyses
+     */
+    private static Set<String> inputVariables = new HashSet<>();
+
+    /**
      * Besides code coverage, there might be other events that we want to
      * keep track during test execution.
      * We keep track of it separately for each action
      */
     private static final List<AdditionalInfo> additionalInfoList = new ArrayList<>();
+
+    static {
+        reset();
+    }
 
 
     public static void reset() {
@@ -55,13 +66,29 @@ public class ExecutionTracer {
         actionIndex = 0;
         additionalInfoList.clear();
         additionalInfoList.add(new AdditionalInfo());
+        inputVariables = new HashSet<>();
     }
 
-    public static void setActionIndex(int index){
-        if(index != actionIndex) {
-            actionIndex = index;
+    public static void setAction(Action action){
+        if(action.getIndex() != actionIndex) {
+            actionIndex = action.getIndex();
             additionalInfoList.add(new AdditionalInfo());
         }
+
+        if(action.getInputVariables() != null){
+            inputVariables = action.getInputVariables();
+        }
+    }
+
+    /**
+     * Check if the given input represented a tainted value from the test cases.
+     * This could be based on static info of the input (eg, according to a precise
+     * name convention given by TaintInputName), or dynamic info given directly by
+     * the test itself (eg, the test at action can register a list of values to check
+     * for)
+     */
+    public static boolean isTaintInput(String input){
+        return TaintInputName.isTaintInput(input) || inputVariables.contains(input);
     }
 
     public static List<AdditionalInfo> exposeAdditionalInfoList() {
@@ -74,6 +101,21 @@ public class ExecutionTracer {
 
     public static void addHeader(String header){
         additionalInfoList.get(actionIndex).addHeader(header);
+    }
+
+    public static void addStringSpecialization(String taintInputName, StringSpecializationInfo info){
+        additionalInfoList.get(actionIndex).addSpecialization(taintInputName, info);
+    }
+
+    public static void markLastExecutedStatement(String lastLine, String lastMethod){
+        additionalInfoList.get(actionIndex).pushLastExecutedStatement(lastLine, lastMethod);
+    }
+
+    public static final String COMPLETED_LAST_EXECUTED_STATEMENT_NAME = "completedLastExecutedStatement";
+    public static final String COMPLETED_LAST_EXECUTED_STATEMENT_DESCRIPTOR = "()V";
+
+    public static void completedLastExecutedStatement(){
+        additionalInfoList.get(actionIndex).popLastExecutedStatement();
     }
 
     public static Map<String, TargetInfo> getInternalReferenceToObjectiveCoverage() {
@@ -147,18 +189,33 @@ public class ExecutionTracer {
         ObjectiveRecorder.update(id, value);
     }
 
+    public static void executedReplacedMethod(String idTemplate, ReplacementType type, Truthness t){
+
+        String idTrue = ObjectiveNaming.methodReplacementObjectiveName(idTemplate, true, type);
+        String idFalse = ObjectiveNaming.methodReplacementObjectiveName(idTemplate, false, type);
+
+        updateObjective(idTrue, t.getOfTrue());
+        updateObjective(idFalse, t.getOfFalse());
+    }
+
 
     public static final String EXECUTED_LINE_METHOD_NAME = "executedLine";
-    public static final String EXECUTED_LINE_DESCRIPTOR = "(Ljava/lang/String;I)V";
+    public static final String EXECUTED_LINE_DESCRIPTOR = "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V";
 
     /**
      * Report on the fact that a given line has been executed.
      */
-    public static void executedLine(String className, int line) {
+    public static void executedLine(String className, String methodName, String descriptor, int line) {
+        //for targets to cover
         String lineId = ObjectiveNaming.lineObjectiveName(className, line);
         String classId = ObjectiveNaming.classObjectiveName(className);
         updateObjective(lineId, 1d);
         updateObjective(classId, 1d);
+
+        //to calculate last executed line
+        String lastLine = className + "_" + line + "_" + methodName;
+        String lastMethod = className + "_" + methodName + "_" + descriptor;
+        markLastExecutedStatement(lastLine, lastMethod);
     }
 
     public static final String EXECUTING_METHOD_METHOD_NAME = "executingMethod";

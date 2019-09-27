@@ -1,6 +1,7 @@
 package org.evomaster.core.search.gene
 
 import org.evomaster.core.output.OutputFormat
+import org.evomaster.core.search.service.AdaptiveParameterControl
 import org.evomaster.core.search.service.Randomness
 
 /**
@@ -33,6 +34,11 @@ open class DateTimeGene(
         time.randomize(randomness, forceNewValue, allGenes)
     }
 
+    override fun standardMutation(randomness: Randomness, apc: AdaptiveParameterControl, allGenes: List<Gene>) {
+        val gene = randomness.choose(listOf(date, time))
+        gene.standardMutation(randomness, apc, allGenes)
+    }
+
     override fun getValueAsPrintableString(previousGenes: List<Gene>, mode: String?, targetFormat: OutputFormat?): String {
         return "\"${getValueAsRawString()}\""
     }
@@ -60,6 +66,7 @@ open class DateTimeGene(
     }
 
     override fun flatView(excludePredicate: (Gene) -> Boolean): List<Gene>{
-        return if(excludePredicate(this)) listOf(this) else listOf(this).plus(date.flatView(excludePredicate)).plus(time.flatView(excludePredicate))
+        return if (excludePredicate(this)) listOf(this) else
+            listOf(this).plus(date.flatView(excludePredicate)).plus(time.flatView(excludePredicate))
     }
 }

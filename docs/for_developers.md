@@ -207,6 +207,55 @@ class name conflicts.
 
 All names should use ASCII letters. Non-ASCII ones like ø or Å must be avoided.
 
+
+
+### MAVEN MODULE HIERARCHY
+
+`EvoMaster` is built with `Maven`, with a hierarchy of submodules. 
+Given a module `X` declaring a submodule `Y` with `<module>` in its `pom.xml` file,
+then `Y` **must** declare `X` as parent with `<parent>`.
+Do no break the hierarchy by pointing to a parent outside `EvoMaster` (e.g., 
+something like `spring-boot-starter-parent`).
+If you need to use such external poms, you can import them as dependency, i.e., specifying
+the `<scope>import</scope>` tag. 
+
+When creating a new module, it is also important to add it as a dependency to `report`,
+so that aggregated, transitive code coverage can be calculated.
+
+
+### MAVEN DEPENDENCY VERSION 
+
+All dependency `<version>` tags must be declared in the *root* `pom.xml` file, 
+in the `<dependencyManagement>` section.
+Submodules *must* not declare a version for a library, and rather refer to the ones in
+the root using just `<groupId>` and `<artifactId>` (but possibly overriding some configurations,
+like `<scope>`).
+
+Motivation: must have only a single version of a library in `EvoMaster`. Specifying versions
+in submodules can lead to duplicated `<version>` declarations with different version numbers.
+All version numbers should be easily audited, and so should be in a single file (i.e., the
+*root* `pom.xml`).
+
+
+### THIRD-PARTY LIBRARIES
+
+Adding a new dependency is fine, but few things to consider:
+
+* __NEVER__ ever add a GPL licensed library, unless it is under the so called _classpath exception_.
+  Note that LGPL libraries are fine.
+ 
+* When adding a new library, check who is maintaining it, and when was its last update.
+  No longer maintained libraries should be avoided. 
+  
+      
+### THIRD-PARTY CODE
+  
+As a rule of thumb, to avoid possible issues with copyrights and license compliance, 
+we should not include code directly from third-party sources.
+However, when that happens, it __MUST__ be made clear in the files themselves (e.g.,
+with comments in their top, with URLs of the original sources). 
+Furthermore, this information should also be added to the [reused_code.md](./reused_code.md) file.  
+  
   
 ### Trello
 If you are among the core developers of `EvoMaster`, you should get an invitation to join
@@ -218,7 +267,9 @@ Current usage:
 - `Done`: tasks that are fully done. We do not delete them, e.g., just in case if need to look at
    them again in the future.
    Even when a task is completed, the moving from `On going` to `Done` should be carried out 
-   __only__ during a developer meeting (so it can be demoed or at least discussed).    
+   __only__ during a developer meeting (so it can be demoed or at least discussed).
+   Furthermore, a done task should be added on top of the `Done` list.
+   In this way, by looking at the top of the list, one can see what were the most recent changes.    
 - `Important, to do soon`: high priority tasks which have not been started yet.
 - `Issues/bugs`: reported bugs which are not trivial to fix. For developers, better to report them
   here than GitHub issue page.

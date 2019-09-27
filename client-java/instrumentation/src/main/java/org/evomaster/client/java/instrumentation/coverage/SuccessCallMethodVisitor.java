@@ -2,9 +2,9 @@ package org.evomaster.client.java.instrumentation.coverage;
 
 import org.evomaster.client.java.instrumentation.staticstate.ExecutionTracer;
 import org.evomaster.client.java.instrumentation.staticstate.ObjectiveRecorder;
-import org.evomaster.client.java.instrumentation.ClassName;
+import org.evomaster.client.java.instrumentation.shared.ClassName;
 import org.evomaster.client.java.instrumentation.Constants;
-import org.evomaster.client.java.instrumentation.ObjectiveNaming;
+import org.evomaster.client.java.instrumentation.shared.ObjectiveNaming;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
@@ -13,8 +13,7 @@ import org.objectweb.asm.Opcodes;
  * Add test objectives to make sure methods are called without
  * throwing an exception.
  *
- * TODO: should also handle the cases of accessing arrays out
- * of bounds.
+ * TODO: should also handle the cases of accessing arrays out of bounds.
  */
 public class SuccessCallMethodVisitor extends MethodVisitor {
 
@@ -55,16 +54,16 @@ public class SuccessCallMethodVisitor extends MethodVisitor {
 
         int index = currentIndex++;
 
-        ObjectiveRecorder.registerTarget(
-                ObjectiveNaming.successCallObjectiveName(className, currentLine, index));
+        String targetId = ObjectiveNaming.successCallObjectiveName(className, currentLine, index);
 
-        addInstrumentation(index, false);
+        ObjectiveRecorder.registerTarget(targetId);
+
+        addBaseInstrumentation(index, false);
         super.visitMethodInsn(opcode, owner, name, desc, itf);
-        addInstrumentation(index, true);
+        addBaseInstrumentation(index, true);
     }
 
-
-    private void addInstrumentation(int index, boolean covered){
+    private void addBaseInstrumentation(int index, boolean covered){
 
         this.visitLdcInsn(className);
         this.visitLdcInsn(currentLine);

@@ -138,10 +138,6 @@ But then of course the test generation will take longer.
 The path directory of where the generated test classes 
 should be saved to.
  
-* `--outputFormat <OutputFormat>`            
-Specify in which format the tests should be outputted.
-For example, JAVA_JUNIT_5 or JAVA_JUNIT_4.
-Use `--help` to check what currently supported.
 
 * `--testSuiteFileName <String>`             
 The name of generated file with the test cases, 
@@ -266,12 +262,14 @@ The development of _EvoMaster_ is rooted in academia.
 Academic publications based on _EvoMaster_ and slides of presentations can be 
 found [here](docs/publications.md).
 These can be useful if you want to know more on how _EvoMaster_ works internally,
-e.g., details on the Many Independent Algorithm (MIO).
+e.g., details on the Many Independent Objective (MIO) algorithm.
 
 
 ### License
 _EvoMaster_'s source code is released under the LGPL (v3) license.
-
+For a list of the used third-party libraries, you can directly see the root [pom.xml](./pom.xml) file.
+For a list of code directly imported (and then possibly modified/updated) from 
+other open-source projects, see [here](./docs/reused_code.md).
 
 
 ### ![](https://www.yourkit.com/images/yklogo.png)

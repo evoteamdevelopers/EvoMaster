@@ -1,16 +1,11 @@
 package org.evomaster.core.problem.graphql.param
 
+import org.evomaster.core.problem.rest.param.Param
 import org.evomaster.core.search.gene.Gene
 
-abstract class GraphqlParam(val name: String, val gene : Gene) {
+class GraphqlParam(name: String, gene : Gene) : Param(name, gene){
 
-    init{
-        if (name.isBlank()){
-            throw IllegalArgumentException("Empty name")
-        }
+    override fun copy(): GraphqlParam {
+        return GraphqlParam(name, gene.copy())
     }
-
-    abstract fun copy(): GraphqlParam
-
-    open fun seeGenes() =  listOf<Gene>(gene)
 }

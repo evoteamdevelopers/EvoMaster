@@ -3,6 +3,12 @@ package com.foo.graphql.examples.spring.petshop.entities;
 import com.foo.graphql.examples.spring.petshop.enums.Animal;
 
 public class Pet {
+    public Pet(long id,String name,Animal type,int age){
+        this.id=id;
+        this.name=name;
+        this.type=type;
+        this.age=age;
+    }
     private long id;
 
     private String name;

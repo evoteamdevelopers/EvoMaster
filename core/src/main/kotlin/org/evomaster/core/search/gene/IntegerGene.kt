@@ -1,22 +1,23 @@
 package org.evomaster.core.search.gene
 
 import org.evomaster.core.output.OutputFormat
+import org.evomaster.core.search.gene.GeneUtils.getDelta
+import org.evomaster.core.search.service.AdaptiveParameterControl
 import org.evomaster.core.search.service.Randomness
 
 
 class IntegerGene(
         name: String,
-        var value: Int = 0,
+        value: Int = 0,
         /** Inclusive */
         val min: Int = Int.MIN_VALUE,
         /** Inclusive */
         val max: Int = Int.MAX_VALUE
-) : Gene(name) {
+) : NumberGene<Int>(name, value) {
 
 
     override fun copy(): Gene {
-        val copy = IntegerGene(name, value, min, max)
-        return copy
+        return IntegerGene(name, value, min, max)
     }
 
     override fun copyValueFrom(other: Gene) {
@@ -62,6 +63,30 @@ class IntegerGene(
             randomness.nextInt(a, b, value)
         } else {
             randomness.nextInt(a, b)
+        }
+
+    }
+
+    override fun standardMutation(randomness: Randomness, apc: AdaptiveParameterControl, allGenes: List<Gene>) {
+
+        //check maximum range. no point in having a delta greater than such range
+        val range: Long = max.toLong() - min.toLong()
+
+        //choose an i for 2^i modification
+        val delta = getDelta(randomness, apc, range)
+
+        val sign = when (value) {
+            max -> -1
+            min -> +1
+            else -> randomness.choose(listOf(-1, +1))
+        }
+
+        val res: Long = (value.toLong()) + (sign * delta)
+
+        value = when {
+            res > max -> max
+            res < min -> min
+            else -> res.toInt()
         }
 
     }

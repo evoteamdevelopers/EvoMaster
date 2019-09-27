@@ -11,7 +11,9 @@ import org.evomaster.client.java.controller.db.SqlScriptRunner;
 import org.evomaster.client.java.controller.problem.GraphqlProblem;
 import org.evomaster.client.java.controller.problem.ProblemInfo;
 import org.evomaster.client.java.controller.problem.RestProblem;
+import org.evomaster.client.java.instrumentation.AdditionalInfo;
 import org.evomaster.client.java.instrumentation.TargetInfo;
+import org.evomaster.client.java.instrumentation.shared.StringSpecializationInfo;
 import org.evomaster.client.java.utils.SimpleLogger;
 
 import javax.ws.rs.*;
@@ -108,6 +110,11 @@ public class EMController {
                 return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
             }
 
+            boolean sqlHeuristics = dto.calculateSqlHeuristics != null && dto.calculateSqlHeuristics;
+            boolean sqlExecution = dto.extractSqlExecutionInfo != null && dto.extractSqlExecutionInfo;
+
+            sutController.enableComputeSqlHeuristicsOrExtractExecution(sqlHeuristics, sqlExecution);
+
             boolean doReset = dto.resetState != null && dto.resetState;
 
             synchronized (this) {
@@ -169,7 +176,7 @@ public class EMController {
              */
 
             String msg = e.getMessage();
-            SimpleLogger.error(msg);
+            SimpleLogger.error(msg, e);
             return Response.status(500).entity(WrappedResponseDto.withError(msg)).build();
         }
 
@@ -200,14 +207,14 @@ public class EMController {
                 return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
             }
 
-            List<TargetInfo> list = sutController.getTargetInfos(ids);
-            if (list == null) {
+            List<TargetInfo> targetInfos = sutController.getTargetInfos(ids);
+            if (targetInfos == null) {
                 String msg = "Failed to collect target information for " + ids.size() + " ids";
                 SimpleLogger.error(msg);
                 return Response.status(500).entity(WrappedResponseDto.withError(msg)).build();
             }
 
-            list.forEach(t -> {
+            targetInfos.forEach(t -> {
                 TargetInfoDto info = new TargetInfoDto();
                 info.id = t.mappedId;
                 info.value = t.value;
@@ -217,13 +224,34 @@ public class EMController {
                 dto.targets.add(info);
             });
 
-            sutController.getAdditionalInfoList().forEach(a -> {
-                AdditionalInfoDto info = new AdditionalInfoDto();
-                info.queryParameters = new HashSet<>(a.getQueryParametersView());
-                info.headers = new HashSet<>(a.getHeadersView());
+            List<AdditionalInfo> additionalInfos = sutController.getAdditionalInfoList();
+            if (additionalInfos != null) {
+                additionalInfos.forEach(a -> {
+                    AdditionalInfoDto info = new AdditionalInfoDto();
+                    info.queryParameters = new HashSet<>(a.getQueryParametersView());
+                    info.headers = new HashSet<>(a.getHeadersView());
+                    info.lastExecutedStatement = a.getLastExecutedStatement();
 
-                dto.additionalInfoList.add(info);
-            });
+                    info.stringSpecializations = new HashMap<>();
+                    for(Map.Entry<String, Set<StringSpecializationInfo>> entry :
+                            a.getStringSpecializationsView().entrySet()){
+
+                        assert ! entry.getValue().isEmpty();
+
+                        List<StringSpecializationInfoDto> list = entry.getValue().stream()
+                                .map(it -> new StringSpecializationInfoDto(it.getStringSpecialization().toString(), it.getValue()))
+                                .collect(Collectors.toList());
+
+                        info.stringSpecializations.put(entry.getKey(), list);
+                    }
+
+                    dto.additionalInfoList.add(info);
+                });
+            } else {
+                String msg = "Failed to collect additional info";
+                SimpleLogger.error(msg);
+                return Response.status(500).entity(WrappedResponseDto.withError(msg)).build();
+            }
 
             dto.extraHeuristics = sutController.getExtraHeuristics();
 
@@ -236,8 +264,8 @@ public class EMController {
                 But even after spending hours googling it, haven't managed to configure it
              */
 
-            String msg = e.getMessage();
-            SimpleLogger.error(msg);
+            String msg = "Thrown exception: " + e.getMessage();
+            SimpleLogger.error(msg, e);
             return Response.status(500).entity(WrappedResponseDto.withError(msg)).build();
         }
     }
@@ -246,9 +274,9 @@ public class EMController {
     @Path(ControllerConstants.NEW_ACTION)
     @Consumes(MediaType.APPLICATION_JSON)
     @PUT
-    public Response newAction(int index) {
+    public Response newAction(ActionDto dto) {
 
-        sutController.newAction(index);
+        sutController.newAction(dto);
 
         return Response.status(204).entity(WrappedResponseDto.withNoData()).build();
     }
@@ -259,47 +287,67 @@ public class EMController {
     @POST
     public Response executeDatabaseCommand(DatabaseCommandDto dto) {
 
-        Connection connection = sutController.getConnection();
-        if (connection == null) {
-            String msg = "No active database connection";
-            SimpleLogger.warn(msg);
-            return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
-        }
-
-        if (dto.command == null && (dto.insertions == null || dto.insertions.isEmpty())) {
-            String msg = "No input command";
-            SimpleLogger.warn(msg);
-            return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
-        }
-
-        if (dto.command != null && dto.insertions != null && !dto.insertions.isEmpty()) {
-            String msg = "Only 1 command can be specified";
-            SimpleLogger.warn(msg);
-            return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
-        }
-
-
-        QueryResult queryResult = null;
-        Map<Long,Long> idMapping = null;
-
         try {
-            if (dto.command != null) {
-                queryResult = SqlScriptRunner.execCommand(connection, dto.command);
-            } else {
-                idMapping = SqlScriptRunner.execInsert(connection, dto.insertions);
+            Connection connection = sutController.getConnection();
+            if (connection == null) {
+                String msg = "No active database connection";
+                SimpleLogger.warn(msg);
+                return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
             }
-        } catch (Exception e) {
-            String msg = "Failed to execute database command: " + e.getMessage();
-            SimpleLogger.warn(msg);
-            return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
-        }
 
-        if (queryResult != null) {
-            return Response.status(200).entity(WrappedResponseDto.withData(queryResult.toDto())).build();
-        } else if(idMapping != null) {
-            return Response.status(200).entity(WrappedResponseDto.withData(idMapping)).build();
-        } else {
-            return Response.status(204).entity(WrappedResponseDto.withNoData()).build();
+            if (dto.command == null && (dto.insertions == null || dto.insertions.isEmpty())) {
+                String msg = "No input command";
+                SimpleLogger.warn(msg);
+                return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
+            }
+
+            if (dto.command != null && dto.insertions != null && !dto.insertions.isEmpty()) {
+                String msg = "Only 1 command can be specified";
+                SimpleLogger.warn(msg);
+                return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
+            }
+
+            if (dto.insertions != null) {
+                if (dto.insertions.stream().anyMatch(i -> i.targetTable == null || i.targetTable.isEmpty())) {
+                    String msg = "Insertion with no target table";
+                    SimpleLogger.warn(msg);
+                    return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
+                }
+            }
+
+            QueryResult queryResult = null;
+            Map<Long, Long> idMapping = null;
+
+            try {
+                if (dto.command != null) {
+                    queryResult = SqlScriptRunner.execCommand(connection, dto.command);
+                } else {
+                    idMapping = SqlScriptRunner.execInsert(connection, dto.insertions);
+                }
+            } catch (Exception e) {
+                String msg = "Failed to execute database command: " + e.getMessage();
+                SimpleLogger.warn(msg);
+                return Response.status(400).entity(WrappedResponseDto.withError(msg)).build();
+            }
+
+            if (queryResult != null) {
+                return Response.status(200).entity(WrappedResponseDto.withData(queryResult.toDto())).build();
+            } else if (idMapping != null) {
+                return Response.status(200).entity(WrappedResponseDto.withData(idMapping)).build();
+            } else {
+                return Response.status(204).entity(WrappedResponseDto.withNoData()).build();
+            }
+
+        } catch (RuntimeException e) {
+            /*
+                FIXME: ideally, would not need to do a try/catch on each single endpoint,
+                as could configure Jetty/Jackson to log all errors.
+                But even after spending hours googling it, haven't managed to configure it
+             */
+
+            String msg = "Thrown exception: " + e.getMessage();
+            SimpleLogger.error(msg, e);
+            return Response.status(500).entity(WrappedResponseDto.withError(msg)).build();
         }
     }
 }

@@ -26,6 +26,7 @@ import org.evomaster.core.search.service.Sampler
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.net.ConnectException
+import java.net.MalformedURLException
 import javax.annotation.PostConstruct
 import javax.ws.rs.client.ClientBuilder
 import javax.ws.rs.core.MediaType
@@ -38,7 +39,7 @@ class RestSampler : Sampler<RestIndividual>(){
         private val log: Logger = LoggerFactory.getLogger(RestSampler::class.java)
     }
 
-    @Inject
+    @Inject(optional = true)
     private lateinit var rc: RemoteController
 
     @Inject
@@ -62,6 +63,11 @@ class RestSampler : Sampler<RestIndividual>(){
 
         log.debug("Initializing {}", RestSampler::class.simpleName)
 
+        if(configuration.blackBox && !configuration.bbExperiments){
+            initForBlackBox()
+            return
+        }
+
         rc.checkConnection()
 
         val started = rc.startSUT()
@@ -72,7 +78,10 @@ class RestSampler : Sampler<RestIndividual>(){
         val infoDto = rc.getSutInfo()
                 ?: throw SutProblemException("Failed to retrieve the info about the system under test")
 
-        val swagger = getSwagger(infoDto)
+        val swaggerURL = infoDto.restProblem?.swaggerJsonUrl
+                ?: throw IllegalStateException("Missing information about the Swagger URL")
+
+        val swagger = getSwagger(swaggerURL)
         if (swagger.paths == null) {
             throw SutProblemException("There is no endpoint definition in the retrieved Swagger file")
         }
@@ -106,6 +115,23 @@ class RestSampler : Sampler<RestIndividual>(){
     }
 
 
+    private fun initForBlackBox() {
+
+        val swagger = getSwagger(configuration.bbSwaggerUrl)
+        if (swagger.paths == null) {
+            throw SutProblemException("There is no endpoint definition in the retrieved Swagger file")
+        }
+
+        actionCluster.clear()
+        RestActionBuilder.addActionsFromSwagger(swagger, actionCluster, listOf())
+
+        modelCluster.clear()
+        RestActionBuilder.getModelsFromSwagger(swagger, modelCluster)
+
+        initAdHocInitialIndividuals()
+
+        log.debug("Done initializing {}", RestSampler::class.simpleName)
+    }
 
 
     private fun setupAuthentication(infoDto: SutInfoDto) {
@@ -138,9 +164,7 @@ class RestSampler : Sampler<RestIndividual>(){
     }
 
 
-    private fun getSwagger(infoDto: SutInfoDto): Swagger {
-
-        val swaggerURL = infoDto?.restProblem?.swaggerJsonUrl ?: throw IllegalStateException("Missing information about the Swagger URL")
+    private fun getSwagger(swaggerURL: String): Swagger {
 
         val response = connectToSwagger(swaggerURL, 30)
 
@@ -175,7 +199,9 @@ class RestSampler : Sampler<RestIndividual>(){
                         yet. So let's just wait a bit, and then retry
                     */
                     Thread.sleep(1_000)
-                } else {
+                } else if(e.cause is MalformedURLException){
+                    throw SutProblemException("Provided URL for Swagger schema is invalid: $swaggerURL")
+                }else {
                     throw IllegalStateException("Failed to connect to $swaggerURL: ${e.message}")
                 }
             }
@@ -217,7 +243,7 @@ class RestSampler : Sampler<RestIndividual>(){
             ObjectGene::class -> {
                 // If the gene is an object, select a suitable one from the Model CLuster (based on the Swagger)
                 restrictedModels = modelCluster.filter{ model ->
-                    (model.value as ObjectGene).fields
+                    model.value.fields
                             .map{ it.name }
                             .toSet().containsAll((g as ObjectGene).fields.map { it.name }) }.toMutableMap()
                 if (restrictedModels.isEmpty()) return Pair(ObjectGene("none", mutableListOf()), Pair("none", UsedObjects.GeneSpecialCases.NOT_FOUND))
@@ -325,7 +351,7 @@ class RestSampler : Sampler<RestIndividual>(){
                 UsedObjects.GeneSpecialCases.COMPLETE_OBJECT -> {
                     if (innerGene.isMutable()) innerGene.randomize(randomness, true)
 
-                    individual.usedObjects.assign(Pair((action as RestCallAction), g), innerGene, field)
+                    individual.usedObjects.assign(Pair(action, g), innerGene, field)
                     individual.usedObjects.selectbody(action, innerGene)
                 }
                 else -> {
@@ -333,7 +359,7 @@ class RestSampler : Sampler<RestIndividual>(){
                     val proposedGene = findSelectedGene(field)
 
                     proposedGene.copyValueFrom(innerGene)
-                    individual.usedObjects.assign(Pair((action as RestCallAction), g), proposed, field)
+                    individual.usedObjects.assign(Pair(action, g), proposed, field)
                     individual.usedObjects.selectbody(action, proposed)
                 }
             }
@@ -810,7 +836,7 @@ class RestSampler : Sampler<RestIndividual>(){
     }
 
     fun addMissingObjects(individual: RestIndividual){
-        val missingActions = individual.usedObjects.notCoveredActions(individual.actions.filter { it is RestCallAction }.toMutableList())
+        val missingActions = individual.usedObjects.notCoveredActions(individual.seeActions().filterIsInstance<RestCallAction>().toMutableList())
         if (missingActions.isEmpty()){
             return // no actions are missing.
         }

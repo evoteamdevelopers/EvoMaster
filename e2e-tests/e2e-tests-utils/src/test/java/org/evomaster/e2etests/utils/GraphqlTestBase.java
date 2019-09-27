@@ -5,7 +5,7 @@ import org.evomaster.client.java.controller.EmbeddedSutController;
 import org.evomaster.client.java.controller.InstrumentedSutStarter;
 import org.evomaster.client.java.controller.api.dto.SutInfoDto;
 import org.evomaster.client.java.controller.internal.SutController;
-import org.evomaster.client.java.instrumentation.ClassName;
+import org.evomaster.client.java.instrumentation.shared.ClassName;
 import org.evomaster.core.Main;
 import org.evomaster.core.output.OutputFormat;
 import org.evomaster.core.output.compiler.CompilerForTestGenerated;
@@ -30,7 +30,26 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public abstract class GraphqlTestBase extends TestBase{
 
+    @AfterAll
+    public static void tearDown() {
 
+        assertTimeoutPreemptively(Duration.ofMinutes(2), () -> {
+            boolean stopped = remoteController.stopSUT();
+            stopped = embeddedStarter.stop() && stopped;
+
+            assertTrue(stopped);
+        });
+    }
+
+
+    @BeforeEach
+    public void initTest() {
+
+        assertTimeoutPreemptively(Duration.ofMinutes(2), () -> {
+            boolean reset = remoteController.resetSUT();
+            assertTrue(reset);
+        });
+    }
 
     protected Solution<GraphqlIndividual> initAndRun(List<String> args){
         return (Solution<GraphqlIndividual>) Main.initAndRun(args.toArray(new String[0]));
@@ -39,7 +58,7 @@ public abstract class GraphqlTestBase extends TestBase{
 
 
 
-    protected List<String> getArgsWithCompilation(int iterations, String outputFolderName, ClassName testClassName){
+    protected List<String> getArgsWithCompilation(int iterations, String outputFolderName, ClassName testClassName, boolean createTests){
 
         return new ArrayList<>(Arrays.asList(
                 "--createTests", "true",
@@ -63,7 +82,7 @@ public abstract class GraphqlTestBase extends TestBase{
 
         controllerPort = embeddedStarter.getControllerServerPort();
 
-        remoteController = new RemoteController("localhost", controllerPort);
+        remoteController = new RemoteController("localhost", controllerPort, false);
         boolean started = remoteController.startSUT();
         assertTrue(started);
 

@@ -16,6 +16,7 @@ import com.google.inject.Inject
 import org.evomaster.client.java.controller.api.dto.SutInfoDto
 import org.evomaster.core.EMConfig
 import org.evomaster.core.problem.graphql.GraphqlAction
+import org.evomaster.core.problem.graphql.GraphqlActionBuilder
 import org.evomaster.core.problem.graphql.GraphqlIndividual
 import org.evomaster.core.remote.SutProblemException
 import org.evomaster.core.remote.service.RemoteController
@@ -63,6 +64,8 @@ class GraphqlSampler : Sampler<GraphqlIndividual>() {
         val schema = getSchema(infoDto)
 
         actionCluster.clear()
+        GraphqlActionBuilder.addActionsFromSchema(schema, actionCluster)
+
         modelCluster.clear()
         // Here we should create Actions and models from schema
 
