@@ -38,6 +38,26 @@ public abstract class RestTestBase extends TestBase {
     protected static RemoteController remoteController;
     protected static int controllerPort;
 
+    @AfterAll
+    public static void tearDown() {
+
+        assertTimeoutPreemptively(Duration.ofMinutes(2), () -> {
+            boolean stopped = remoteController.stopSUT();
+            stopped = embeddedStarter.stop() && stopped;
+
+            assertTrue(stopped);
+        });
+    }
+
+
+    @BeforeEach
+    public void initTest() {
+
+        assertTimeoutPreemptively(Duration.ofMinutes(2), () -> {
+            boolean reset = remoteController.resetSUT();
+            assertTrue(reset);
+        });
+    }
 
 
     protected Solution<RestIndividual> initAndRun(List<String> args){

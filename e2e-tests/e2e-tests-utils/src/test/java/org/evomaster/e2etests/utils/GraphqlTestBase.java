@@ -30,7 +30,26 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public abstract class GraphqlTestBase extends TestBase{
 
+    @AfterAll
+    public static void tearDown() {
 
+        assertTimeoutPreemptively(Duration.ofMinutes(2), () -> {
+            boolean stopped = remoteController.stopSUT();
+            stopped = embeddedStarter.stop() && stopped;
+
+            assertTrue(stopped);
+        });
+    }
+
+
+    @BeforeEach
+    public void initTest() {
+
+        assertTimeoutPreemptively(Duration.ofMinutes(2), () -> {
+            boolean reset = remoteController.resetSUT();
+            assertTrue(reset);
+        });
+    }
 
     protected Solution<GraphqlIndividual> initAndRun(List<String> args){
         return (Solution<GraphqlIndividual>) Main.initAndRun(args.toArray(new String[0]));
