@@ -4,8 +4,17 @@ type Query {
 }
 type Mutation {
     CreatePet(id: Int!,type: Animal!,name: String!,age: Int): Pet
+    CreatePetWithAgeList(id: Int!,type: Animal!,name: String!,ageList: [Int]): Pet
+    CreatePetByObject(pet: PetInput): Pet
 }
 type Pet {
+    id: Int
+    type: Animal
+    name: String
+    age: Int
+}
+
+input PetInput {
     id: Int
     type: Animal
     name: String

@@ -66,8 +66,8 @@ class GraphqlSampler : Sampler<GraphqlIndividual>() {
         actionCluster.clear()
         GraphqlActionBuilder.addActionsFromSchema(schema, actionCluster)
 
-        modelCluster.clear()
-        // Here we should create Actions and models from schema
+//        modelCluster.clear()
+        //no need for modelCluster YET !
 
     }
 

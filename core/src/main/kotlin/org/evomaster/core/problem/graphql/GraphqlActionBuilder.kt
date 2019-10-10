@@ -46,18 +46,7 @@ class GraphqlActionBuilder {
                     operation.inputValueDefinitions.forEach{
                         val inputName = it.name
 
-                        val type: TypeName
-                        when(it.type){
-                            is NonNullType ->
-                                type = (it.type as NonNullType).type as TypeName
-                            is TypeName ->
-                                type = it.type as TypeName
-//                            it.type is ListType -> //TODO: should handle listType
-//                                type = null
-
-                            else -> throw IllegalStateException("Invalid type supplied")
-                        }
-
+                        val type = it.type as AbstractNode<*>
 
                         val gene = getGene(inputName, type, schema)
                         params.add(GraphqlParam(name, gene))
@@ -68,10 +57,9 @@ class GraphqlActionBuilder {
 
         private fun getGene(
                 name: String,
-                type: TypeName,
+                type: AbstractNode<*>,
                 schema: TypeDefinitionRegistry
         ) :Gene {
-            val typeName = type.name
 
             /*
             https://graphql.org/learn/schema/
@@ -84,16 +72,36 @@ class GraphqlActionBuilder {
             ID      The ID type is serialized in the same way as a String
 
              */
-            when (typeName) {
-                "Int" -> return IntegerGene(name)
-                "Float" -> return FloatGene(name)
-                "String" -> return StringGene(name)
-                "Boolean" -> return BooleanGene(name)
-                "ID" -> return StringGene(name) //according to the reference we can treat ID as String
 
-                else -> {
-                    return createObjectFromReference(name, typeName, schema)
+            val primitiveTypeName: String
+            val typeName: TypeName
+            when(type){
+                is NonNullType -> {
+                    typeName = type.type as TypeName
+                    return getGene(name, typeName, schema)
                 }
+
+                is TypeName -> {
+                    primitiveTypeName = type.name
+                    when (primitiveTypeName) {
+                        "Int" -> return IntegerGene(name)
+                        "Float" -> return FloatGene(name)
+                        "String" -> return StringGene(name)
+                        "Boolean" -> return BooleanGene(name)
+                        "ID" -> return StringGene(name) //according to the reference we can treat ID as String
+
+                        else -> {
+                            return createObjectFromReference(name, primitiveTypeName, schema)
+                        }
+                    }
+                }
+                is ListType -> {
+                    typeName = type.type as TypeName
+                    val template = getGene(name, typeName, schema)
+                    return ArrayGene(name, template)
+                }
+
+                else -> throw IllegalStateException("Invalid type supplied")
             }
 
         }
@@ -104,23 +112,44 @@ class GraphqlActionBuilder {
         ): Gene {
             val classDef = schema.getType(reference).get()
 
-            if (classDef is EnumTypeDefinition){
-                return createEnumFromReference(classDef)
+            if (classDef is EnumTypeDefinition) {
+                return createEnumFromReference(name, classDef)
+            } else if (classDef is InputObjectTypeDefinition) {
+                return createInputObjectFromReference(name, classDef, schema)
             }
-
-            //TODO:After this we should handle ObjectypeDefinition, InterfaceDefinition and UnionDefinition
-
-            return StringGene("test")
+            else {
+                throw IllegalStateException("Invalid type supplied")
+            }
         }
 
-        fun createEnumFromReference(classDef: EnumTypeDefinition): Gene {
+        fun createInputObjectFromReference(name: String, classDef: InputObjectTypeDefinition, schema: TypeDefinitionRegistry): Gene {
+            val fields = createFields(classDef.inputValueDefinitions, schema)
+            return ObjectGene(name, fields, name)
+        }
+
+        fun createFields(inputFields: MutableList<InputValueDefinition>, schema: TypeDefinitionRegistry): List<out Gene> {
+            val fields: MutableList<Gene> = mutableListOf()
+
+            inputFields.forEach {
+                val type = it.type as AbstractNode<*>
+                var gene = getGene(it.name,
+                                    type,
+                                    schema)
+
+                fields.add(gene)
+            }
+
+            return fields
+        }
+
+        fun createEnumFromReference(name: String, classDef: EnumTypeDefinition): Gene {
 
             var enumTypes = mutableListOf<String>()
             classDef.enumValueDefinitions.forEach{
                 enumTypes.add(it.name)
             }
 
-            return EnumGene<String>("name", enumTypes)
+            return EnumGene<String>(name, enumTypes)
         }
     }
 }
