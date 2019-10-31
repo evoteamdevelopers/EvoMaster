@@ -10,10 +10,10 @@ import org.evomaster.core.search.Solution;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class PetShopEMTest extends PetShopTestBase {
-    @Test
-    public void testMIO() throws Throwable {
-        testRunEM(EMConfig.Algorithm.MIO, 1000);
-    }
+//    @Test
+//    public void testMIO() throws Throwable {
+//        testRunEM(EMConfig.Algorithm.MIO, 1000);
+//    }
 
     private void testRunEM(EMConfig.Algorithm alg, int iterations) throws Throwable {
 
