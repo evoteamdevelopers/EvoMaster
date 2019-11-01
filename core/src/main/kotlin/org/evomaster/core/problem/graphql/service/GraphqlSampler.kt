@@ -18,6 +18,8 @@ import org.evomaster.core.EMConfig
 import org.evomaster.core.problem.graphql.GraphqlAction
 import org.evomaster.core.problem.graphql.GraphqlActionBuilder
 import org.evomaster.core.problem.graphql.GraphqlIndividual
+import org.evomaster.core.problem.graphql.GraphqlSampleType
+import org.evomaster.core.problem.rest.service.RestSampler
 import org.evomaster.core.remote.SutProblemException
 import org.evomaster.core.remote.service.RemoteController
 import org.evomaster.core.search.gene.ObjectGene
@@ -29,6 +31,8 @@ import javax.annotation.PostConstruct
 import javax.ws.rs.client.ClientBuilder
 import javax.ws.rs.core.MediaType
 import javax.ws.rs.core.Response
+import org.evomaster.core.search.Action
+
 
 class GraphqlSampler : Sampler<GraphqlIndividual>() {
 
@@ -66,13 +70,34 @@ class GraphqlSampler : Sampler<GraphqlIndividual>() {
         actionCluster.clear()
         GraphqlActionBuilder.addActionsFromSchema(schema, actionCluster)
 
-        modelCluster.clear()
-        // Here we should create Actions and models from schema
+//        modelCluster.clear()
+        //no need for modelCluster YET !
+
+        log.debug("Done initializing {}", GraphqlSampler::class.simpleName)
 
     }
 
     override fun sampleAtRandom(): GraphqlIndividual {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        val actions = mutableListOf<GraphqlAction>()
+        val n = randomness.nextInt(1, config.maxTestSize)
+
+        (0 until n).forEach {
+            actions.add(sampleRandomAction())
+        }
+
+        return GraphqlIndividual(actions, GraphqlSampleType.RANDOM, mutableListOf())
+    }
+
+
+    fun sampleRandomAction(): GraphqlAction {
+        val action = randomness.choose(actionCluster).copy() as GraphqlAction
+        randomizeActionGenes(action)
+
+        return action
+    }
+
+    private fun randomizeActionGenes(action: Action) {
+        action.seeGenes().forEach { it.randomize(randomness, false)}
     }
 
     private fun getSchema(infoDto: SutInfoDto): TypeDefinitionRegistry
